@@ -3,6 +3,7 @@ dns.setDefaultResultOrder('ipv6first');
 
 const express = require('express');
 const { Pool } = require('pg');
+const https = require('https');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -16,6 +17,25 @@ const pool = new Pool({
   connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,
 });
+
+const TG_TOKEN  = process.env.TG_TOKEN  || '8223125498:AAE6qVmNnXvW0MkQOfJT8h94liTxeRZfxKU';
+const TG_CHAT   = process.env.TG_CHAT   || '8728761353';
+
+// ── Telegram helper ───────────────────────────────────────────────────────────
+function tgSend(text) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
+    const req = https.request({
+      hostname: 'api.telegram.org',
+      path: `/bot${TG_TOKEN}/sendMessage`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, res => { res.resume(); resolve(); });
+    req.on('error', () => resolve());
+    req.write(body);
+    req.end();
+  });
+}
 
 // ── Seed data ─────────────────────────────────────────────────────────────────
 const SEED = [
@@ -55,11 +75,13 @@ const SEED_LOGS = [
   { task_id: 't23', message: 'Postgres private networking confirmed working (IPv4 + IPv6 both resolve). Key fix: ssl:false for internal Railway connections.' },
   { task_id: 't23', message: 'App live at https://clea-status-production.up.railway.app — 19 tasks seeded from kanban.' },
   { task_id: 't23', message: 'Added task detail pages with activity log. POST /task/:id/log endpoint added for writing entries programmatically.' },
+  { task_id: 't23', message: 'Added priority flag + ⚡ badge. POST /task/:id/prioritize fires a Telegram notification to kick off work immediately.' },
   { task_id: 't2',  message: 'Sub-agent spawned to read manage-v3 (~3.9k files) and hyperion (~3.1k files).' },
   { task_id: 't2',  message: 'Analysis complete. Wrote manage-v3-analysis.md and hyperion-analysis.md. Key finding: analytics uses dynamic SQL templates with {COLUMNS}/{GROUP} markers rewritten at runtime.' },
   { task_id: 't6',  message: 'Added status badges (Active/Paused/Blocked) with colored left borders. Storage key bumped to v3.' },
   { task_id: 't6',  message: 'Added note field and status picker to modal. Done column tasks show with strikethrough + reduced opacity.' },
-  { task_id: 't6',  message: 'Added task detail pages with activity log (this feature).' },
+  { task_id: 't6',  message: 'Added task detail pages with activity log.' },
+  { task_id: 't6',  message: 'Added Prioritize button — fires Telegram notification and marks task in DB.' },
   { task_id: 't1',  message: 'Blocked — waiting for Jack to provide Alpaca API keys.' },
   { task_id: 't8',  message: 'Blocked — Moltbook API key is locked in an encrypted file. Need Jack to surface it.' },
   { task_id: 't7',  message: 'Researched Samsung Odyssey G95NC HDMI issues. Fix: USB-C → DisplayPort 1.4 cable. Email sent to Jack at 1 AM.' },
@@ -91,9 +113,13 @@ async function setup() {
       tag        TEXT,
       status     TEXT,
       meta       TEXT,
+      priority   BOOLEAN DEFAULT FALSE,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  // Add priority column if upgrading from older schema
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority BOOLEAN DEFAULT FALSE`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS task_logs (
@@ -116,7 +142,6 @@ async function setup() {
     `, [t.id, t.col, t.text, t.tag||null, t.status||null, t.meta||null]);
   }
 
-  // Seed logs only if table is empty
   const { rows: existing } = await pool.query('SELECT COUNT(*) FROM task_logs');
   if (parseInt(existing[0].count) === 0) {
     for (const l of SEED_LOGS) {
@@ -159,6 +184,10 @@ function statusBadge(status) {
   return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:${s.bg};color:${s.color};border:1px solid ${s.border};white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:${s.dot};display:inline-block"></span>${s.label}</span>`;
 }
 
+function priorityBadge() {
+  return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:#2a1f00;color:#f5a623;border:1px solid #3d2e00;white-space:nowrap">⚡ Priority</span>`;
+}
+
 function fmtDate(d) {
   return new Date(d).toLocaleString('en-US', {
     timeZone: 'America/New_York',
@@ -179,6 +208,11 @@ function page(title, body) {
     body{background:#0a0a0a;color:#d8d8d8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh;padding:32px 28px 60px;max-width:900px;margin:0 auto}
     a{color:#4a80ff;text-decoration:none}
     a:hover{text-decoration:underline}
+    .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:7px;border:none;font-size:13px;font-weight:600;cursor:pointer;transition:opacity 0.15s}
+    .btn:hover{opacity:0.85}
+    .btn:active{opacity:0.7}
+    .btn-priority{background:#f5a623;color:#000}
+    .btn-deprioritize{background:#1e1e1e;color:#555;border:1px solid #2a2a2a}
   </style>
 </head>
 <body>${body}</body>
@@ -186,23 +220,27 @@ function page(title, body) {
 }
 
 function renderCard(t, clickable = true) {
-  const borderColor = STATUS_STYLES[t.status]?.dot;
+  const borderColor = t.priority ? '#f5a623' : STATUS_STYLES[t.status]?.dot;
+  const badges = `${t.priority ? priorityBadge() : ''}${statusBadge(t.status)}`;
   const inner = `
     <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
-      <span style="font-size:13px;color:#d8d8d8;line-height:1.5;flex:1">${t.text}</span>
-      ${statusBadge(t.status)}
+      <span style="font-size:13px;color:${t.priority ? '#f0f0f0' : '#d8d8d8'};line-height:1.5;flex:1">${t.text}</span>
+      <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">${badges}</div>
     </div>
     ${(t.tag || t.meta) ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${tagPill(t.tag)}${t.meta ? `<span style="font-size:11px;color:#3a3a3a">${t.meta}</span>` : ''}</div>` : ''}
   `;
+  const border = `border:1px solid ${t.priority ? '#3d2e00' : '#1c1c1c'};${borderColor ? `border-left:3px solid ${borderColor};` : ''}`;
   if (clickable) {
-    return `<a href="/task/${t.id}" style="display:block;text-decoration:none;background:#111;border:1px solid #1c1c1c;${borderColor ? `border-left:3px solid ${borderColor};` : ''}border-radius:8px;padding:12px 14px;transition:border-color 0.15s" onmouseover="this.style.borderColor='#2e2e2e'" onmouseout="this.style.borderColor='${borderColor || '#1c1c1c'}'">${inner}</a>`;
+    return `<a href="/task/${t.id}" style="display:block;text-decoration:none;background:${t.priority ? '#120e00' : '#111'};${border}border-radius:8px;padding:12px 14px;transition:opacity 0.15s" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">${inner}</a>`;
   }
-  return `<div style="background:#111;border:1px solid #1c1c1c;${borderColor ? `border-left:3px solid ${borderColor};` : ''}border-radius:8px;padding:12px 14px">${inner}</div>`;
+  return `<div style="background:${t.priority ? '#120e00' : '#111'};${border}border-radius:8px;padding:12px 14px">${inner}</div>`;
 }
 
 function renderColumn(label, tasks, dotColor) {
-  const cards = tasks.length
-    ? tasks.map(t => renderCard(t)).join('')
+  // Prioritized tasks float to top within their column
+  const sorted = [...tasks.filter(t => t.priority), ...tasks.filter(t => !t.priority)];
+  const cards = sorted.length
+    ? sorted.map(t => renderCard(t)).join('')
     : `<div style="text-align:center;color:#2a2a2a;font-size:12px;padding:20px 0">Nothing here</div>`;
   return `
     <div style="flex:1;min-width:260px;max-width:380px;display:flex;flex-direction:column">
@@ -218,13 +256,13 @@ function renderColumn(label, tasks, dotColor) {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
-// Board
 app.get('/', async (req, res) => {
-  const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY updated_at DESC`);
+  const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY priority DESC, updated_at DESC`);
   const cols = { todo: rows.filter(r => r.col==='todo'), progress: rows.filter(r => r.col==='progress'), done: rows.filter(r => r.col==='done') };
   const now = fmtDate(new Date());
-  const blocked = rows.filter(r => r.status==='blocked').length;
-  const active  = rows.filter(r => r.status==='active').length;
+  const blocked  = rows.filter(r => r.status==='blocked').length;
+  const active   = rows.filter(r => r.status==='active').length;
+  const priority = rows.filter(r => r.priority).length;
 
   res.setHeader('Content-Type', 'text/html');
   res.send(page('Status', `
@@ -237,7 +275,13 @@ app.get('/', async (req, res) => {
 </div>
 
 <div style="display:flex;gap:10px;margin-bottom:32px;flex-wrap:wrap">
-  ${[{label:'Total tasks',value:rows.length,color:'#f0f0f0'},{label:'Done',value:cols.done.length,color:'#4caf6e'},{label:'Active',value:active,color:'#4a9fdf'},{label:'Blocked',value:blocked,color:'#cf4f4f'}].map(s=>`
+  ${[
+    {label:'Total tasks', value:rows.length,  color:'#f0f0f0'},
+    {label:'Done',        value:cols.done.length, color:'#4caf6e'},
+    {label:'Active',      value:active,        color:'#4a9fdf'},
+    {label:'Blocked',     value:blocked,       color:'#cf4f4f'},
+    {label:'Priority',    value:priority,      color:'#f5a623'},
+  ].map(s=>`
     <div style="background:#111;border:1px solid #1c1c1c;border-radius:9px;padding:14px 20px;min-width:110px">
       <div style="font-size:22px;font-weight:700;color:${s.color}">${s.value}</div>
       <div style="font-size:11px;color:#3a3a3a;margin-top:2px">${s.label}</div>
@@ -254,7 +298,6 @@ app.get('/', async (req, res) => {
 `));
 });
 
-// Task detail
 app.get('/task/:id', async (req, res) => {
   const { id } = req.params;
   const { rows: tasks } = await pool.query('SELECT * FROM tasks WHERE id=$1', [id]);
@@ -266,12 +309,15 @@ app.get('/task/:id', async (req, res) => {
     [id]
   );
 
-  const borderColor = STATUS_STYLES[task.status]?.dot;
+  const prioritizeBtn = task.priority
+    ? `<button class="btn btn-deprioritize" onclick="setPriority(false)">Remove Priority</button>`
+    : `<button class="btn btn-priority" onclick="setPriority(true)">⚡ Prioritize</button>`;
 
   res.setHeader('Content-Type', 'text/html');
   res.send(page(task.text, `
-<div style="margin-bottom:24px">
+<div style="margin-bottom:24px;display:flex;align-items:center;justify-content:space-between">
   <a href="/" style="font-size:12px;color:#444">← Back to board</a>
+  <div id="btn-container">${prioritizeBtn}</div>
 </div>
 
 ${renderCard(task, false)}
@@ -281,6 +327,7 @@ ${renderCard(task, false)}
     Activity Log ${logs.length ? `<span style="color:#2a2a2a;font-weight:400">(${logs.length} entries)</span>` : '<span style="color:#2a2a2a;font-weight:400">(no entries yet)</span>'}
   </div>
 
+  <div id="log-list">
   ${logs.length === 0 ? `
     <div style="background:#111;border:1px solid #1c1c1c;border-radius:8px;padding:24px;text-align:center;color:#333;font-size:12px">
       Nothing logged yet.
@@ -291,11 +338,60 @@ ${renderCard(task, false)}
       <div style="font-size:13px;color:#888;line-height:1.6;flex:1">${l.message}</div>
     </div>
   `).join('')}
+  </div>
 </div>
+
+<script>
+async function setPriority(on) {
+  const btn = document.querySelector('#btn-container button');
+  btn.disabled = true;
+  btn.textContent = on ? 'Prioritizing…' : 'Removing…';
+  try {
+    const r = await fetch('/task/${id}/prioritize', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ priority: on })
+    });
+    if (r.ok) {
+      window.location.reload();
+    } else {
+      btn.disabled = false;
+      btn.textContent = on ? '⚡ Prioritize' : 'Remove Priority';
+      alert('Something went wrong.');
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = on ? '⚡ Prioritize' : 'Remove Priority';
+  }
+}
+</script>
 `));
 });
 
-// Write a log entry (internal use — I call this from cron/scripts)
+// Prioritize a task
+app.post('/task/:id/prioritize', async (req, res) => {
+  const { id } = req.params;
+  const priority = req.body.priority !== false; // default true
+
+  const { rows: tasks } = await pool.query('SELECT * FROM tasks WHERE id=$1', [id]);
+  if (!tasks.length) return res.status(404).json({ error: 'task not found' });
+  const task = tasks[0];
+
+  await pool.query('UPDATE tasks SET priority=$1, updated_at=NOW() WHERE id=$2', [priority, id]);
+
+  const logMsg = priority
+    ? `Marked as priority by Jack. Starting aggressive work.`
+    : `Priority removed.`;
+  await pool.query('INSERT INTO task_logs (task_id, message) VALUES ($1, $2)', [id, logMsg]);
+
+  if (priority) {
+    await tgSend(`⚡ <b>Priority task flagged:</b> ${task.text}\n\nStarting on it now. Will reach out if I need anything from you.`);
+  }
+
+  res.json({ ok: true, priority });
+});
+
+// Write a log entry
 app.post('/task/:id/log', async (req, res) => {
   const secret = process.env.LOG_SECRET || 'clea';
   if (req.headers['x-clea-secret'] !== secret) return res.status(401).json({ error: 'unauthorized' });
