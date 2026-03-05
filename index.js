@@ -5,9 +5,13 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 const dbUrl = process.env.DATABASE_URL || '';
+console.log('DB URL present:', !!dbUrl, '| internal:', dbUrl.includes('railway.internal'));
+
 const pool = new Pool({
   connectionString: dbUrl,
   ssl: dbUrl.includes('railway.internal') ? false : { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
 });
 
 // ── Seed data (from local kanban) ────────────────────────────────────────────
