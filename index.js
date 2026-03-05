@@ -4,7 +4,11 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+const dbUrl = process.env.DATABASE_URL || '';
+const pool = new Pool({
+  connectionString: dbUrl,
+  ssl: dbUrl.includes('railway.internal') ? false : { rejectUnauthorized: false },
+});
 
 // ── Seed data (from local kanban) ────────────────────────────────────────────
 const SEED = [
@@ -192,6 +196,6 @@ app.get('/', async (req, res) => {
 setup().then(() => {
   app.listen(port, () => console.log(`Clea status on port ${port}`));
 }).catch(err => {
-  console.error('DB setup failed:', err.message);
+  console.error('DB setup failed:', err);
   process.exit(1);
 });
