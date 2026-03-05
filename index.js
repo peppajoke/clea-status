@@ -4,13 +4,13 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const dbUrl = (process.env.DATABASE_URL || '').replace('?', '?sslmode=disable&').replace(/sslmode=[^&]+/, 'sslmode=disable');
-console.log('Connecting to DB, sslmode=disable');
+const dbUrl = process.env.DATABASE_URL || '';
+console.log('DB URL:', dbUrl.replace(/:([^@]+)@/, ':***@'));
 
 const pool = new Pool({
-  connectionString: dbUrl.includes('sslmode=') ? dbUrl : dbUrl + '?sslmode=disable',
-  ssl: false,
-  connectionTimeoutMillis: 15000,
+  connectionString: dbUrl,
+  ssl: dbUrl.includes('railway.internal') ? false : { rejectUnauthorized: false },
+  connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
 });
 
@@ -38,7 +38,22 @@ const SEED = [
 ];
 
 // ── DB setup ─────────────────────────────────────────────────────────────────
+async function waitForDb(retries = 10, delayMs = 3000) {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      await pool.query('SELECT 1');
+      console.log('DB connected');
+      return;
+    } catch (e) {
+      console.log(`DB not ready (attempt ${i}/${retries}): ${e.message}`);
+      if (i === retries) throw e;
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
+}
+
 async function setup() {
+  await waitForDb();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tasks (
       id        TEXT PRIMARY KEY,
