@@ -2,10 +2,19 @@ const dns = require('dns');
 const net = require('net');
 dns.setDefaultResultOrder('ipv6first');
 
-// Debug: resolve postgres hostname
+// Debug: resolve and raw TCP test
 dns.lookup('postgres.railway.internal', { all: true }, (err, addrs) => {
-  if (err) console.log('DNS lookup error:', err.message);
-  else console.log('DNS resolved:', JSON.stringify(addrs));
+  if (err) return console.log('DNS error:', err.message);
+  console.log('DNS:', JSON.stringify(addrs));
+  // Raw TCP test to each address
+  addrs.forEach(({ address, family }) => {
+    const sock = net.createConnection({ host: address, port: 5432, family }, () => {
+      console.log(`TCP OK: [${family}] ${address}:5432`);
+      sock.destroy();
+    });
+    sock.on('error', e => console.log(`TCP FAIL: [${family}] ${address}:5432 — ${e.message}`));
+    setTimeout(() => { if (!sock.destroyed) { console.log(`TCP TIMEOUT: [${family}] ${address}:5432`); sock.destroy(); } }, 5000);
+  });
 });
 
 const express = require('express');
