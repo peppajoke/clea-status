@@ -461,6 +461,17 @@ app.post('/task/:id/prioritize', requireWrite, async (req, res) => {
   res.json({ ok: true, priority });
 });
 
+// Create a task
+app.post('/tasks', requireWrite, async (req, res) => {
+  const { id, col, text, tag, status, meta } = req.body;
+  if (!id || !col || !text) return res.status(400).json({ error: 'id, col, text required' });
+  await pool.query(
+    'INSERT INTO tasks (id, col, text, tag, status, meta) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
+    [id, col, text, tag||null, status||null, meta||null]
+  );
+  res.json({ ok: true });
+});
+
 // Update a task (status, col, meta, text)
 app.patch('/task/:id', requireWrite, async (req, res) => {
   const { id } = req.params;
