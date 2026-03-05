@@ -391,6 +391,17 @@ app.post('/task/:id/prioritize', async (req, res) => {
   res.json({ ok: true, priority });
 });
 
+// Data API — returns tasks + recent logs (used by external scripts/cron)
+app.get('/api/data', async (req, res) => {
+  const secret = process.env.LOG_SECRET || 'clea';
+  if (req.headers['x-clea-secret'] !== secret) return res.status(401).json({ error: 'unauthorized' });
+  const [tasks, logs] = await Promise.all([
+    pool.query("SELECT col, text, status, tag, priority FROM tasks WHERE col != 'done' ORDER BY priority DESC, col, updated_at DESC"),
+    pool.query("SELECT t.text as task, t.col, t.status, l.message, l.created_at FROM task_logs l JOIN tasks t ON t.id = l.task_id WHERE l.created_at > NOW() - INTERVAL '24 hours' ORDER BY l.created_at DESC"),
+  ]);
+  res.json({ tasks: tasks.rows, logs: logs.rows });
+});
+
 // Write a log entry
 app.post('/task/:id/log', async (req, res) => {
   const secret = process.env.LOG_SECRET || 'clea';
