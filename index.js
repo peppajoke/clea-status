@@ -1,18 +1,14 @@
 const dns = require('dns');
-const net = require('net');
 dns.setDefaultResultOrder('ipv6first');
-
-
 
 const express = require('express');
 const { Pool } = require('pg');
 
 const app = express();
 const port = process.env.PORT || 3000;
+app.use(express.json());
 
 const dbUrl = (process.env.DATABASE_URL || '').split('?')[0];
-console.log('Connecting to:', dbUrl.replace(/:([^@]+)@/, ':***@'));
-
 const isInternal = dbUrl.includes('.railway.internal');
 const pool = new Pool({
   connectionString: dbUrl,
@@ -21,30 +17,55 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
 });
 
-// ── Seed data (from local kanban) ────────────────────────────────────────────
+// ── Seed data ─────────────────────────────────────────────────────────────────
 const SEED = [
-  { id: 't1',  col: 'todo',     text: 'Alpaca trading setup',                          tag: 'clea',      status: 'blocked', meta: 'Waiting for API keys' },
-  { id: 't2',  col: 'todo',     text: 'Flowhub codebase analysis',                     tag: 'flowhub',   status: 'active',  meta: 'Sub-agent running now' },
+  { id: 't1',  col: 'todo',     text: 'Alpaca trading setup',                          tag: 'clea',      status: 'blocked', meta: 'Waiting for API keys from Jack' },
+  { id: 't2',  col: 'todo',     text: 'Flowhub codebase analysis',                     tag: 'flowhub',   status: 'active',  meta: 'Analysis complete — docs written' },
   { id: 't3',  col: 'todo',     text: 'Research Alpaca trading strategies',             tag: 'clea',      status: '',        meta: 'Momentum, news-driven, index-tracking' },
-  { id: 't5',  col: 'progress', text: 'Simon chat page',                                tag: 'clea',      status: 'active',  meta: 'Fixed — direct ollama connection' },
-  { id: 't6',  col: 'progress', text: 'Kanban task board',                              tag: 'clea',      status: 'active',  meta: 'Active iteration' },
-  { id: 't7',  col: 'progress', text: 'Monitor HDMI fix',                               tag: 'infra',     status: 'paused',  meta: 'Email sent — waiting on cable swap' },
-  { id: 't8',  col: 'progress', text: 'Moltbook post',                                  tag: 'clea',      status: 'blocked', meta: 'API key locked in encrypted file' },
-  { id: 't20', col: 'progress', text: 'Railway + GitHub deployment pipeline',           tag: 'infra',     status: 'active',  meta: 'Live — this app' },
-  { id: 't9',  col: 'done',     text: 'WhatsApp linked',                                tag: 'infra',     status: '',        meta: '' },
-  { id: 't10', col: 'done',     text: 'Brave Search API configured',                    tag: 'infra',     status: '',        meta: '' },
-  { id: 't11', col: 'done',     text: 'Identity set (Clea Dessendre)',                  tag: 'clea',      status: '',        meta: '' },
-  { id: 't12', col: 'done',     text: 'Avatar generated + set',                         tag: 'clea',      status: '',        meta: '' },
-  { id: 't13', col: 'done',     text: 'Tailscale installed',                            tag: 'infra',     status: '',        meta: '' },
-  { id: 't14', col: 'done',     text: 'Simon agent created (llama3.1:8b)',              tag: 'clea',      status: '',        meta: '' },
-  { id: 't15', col: 'done',     text: 'Double-talking bug fixed',                       tag: 'infra',     status: '',        meta: '' },
-  { id: 't16', col: 'done',     text: 'Moltbook profile created',                       tag: 'clea',      status: '',        meta: '' },
-  { id: 't17', col: 'done',     text: 'OpenAI API + DALL-E 3 working',                 tag: 'infra',     status: '',        meta: '' },
-  { id: 't18', col: 'done',     text: 'House of Photos contract drafted',               tag: 'bauersoft', status: '',        meta: '' },
-  { id: 't19', col: 'done',     text: 'Codebase files downloaded',                     tag: 'flowhub',   status: '',        meta: '' },
+  { id: 't21', col: 'todo',     text: 'Voice chat (Whisper → Claude → TTS)',           tag: 'clea',      status: 'paused',  meta: 'Tabled — plan agreed, waiting on Jack' },
+  { id: 't22', col: 'todo',     text: 'Email deliverability fix (SPF/DKIM)',           tag: 'infra',     status: 'paused',  meta: 'Spam issue — Jack working on domain DNS' },
+  { id: 't5',  col: 'progress', text: 'Simon chat page',                               tag: 'clea',      status: 'paused',  meta: 'Fixed — direct ollama, history persisted' },
+  { id: 't6',  col: 'progress', text: 'Kanban task board',                             tag: 'clea',      status: 'active',  meta: 'Active iteration' },
+  { id: 't7',  col: 'progress', text: 'Monitor HDMI fix',                              tag: 'infra',     status: 'paused',  meta: 'Email sent — waiting on cable swap' },
+  { id: 't8',  col: 'progress', text: 'Moltbook post',                                 tag: 'clea',      status: 'blocked', meta: 'API key locked in encrypted file' },
+  { id: 't23', col: 'progress', text: 'clea-status Railway app',                       tag: 'infra',     status: 'active',  meta: 'Live with Postgres' },
+  { id: 't9',  col: 'done',     text: 'WhatsApp linked',                               tag: 'infra' },
+  { id: 't10', col: 'done',     text: 'Brave Search API configured',                   tag: 'infra' },
+  { id: 't11', col: 'done',     text: 'Identity set (Clea Dessendre)',                 tag: 'clea' },
+  { id: 't12', col: 'done',     text: 'Avatar generated + set',                        tag: 'clea' },
+  { id: 't13', col: 'done',     text: 'Tailscale installed',                           tag: 'infra' },
+  { id: 't14', col: 'done',     text: 'Simon agent created (llama3.1:8b)',             tag: 'clea' },
+  { id: 't15', col: 'done',     text: 'Double-talking bug fixed',                      tag: 'infra' },
+  { id: 't16', col: 'done',     text: 'Moltbook profile created',                      tag: 'clea' },
+  { id: 't17', col: 'done',     text: 'OpenAI API + DALL-E 3 working',                tag: 'infra' },
+  { id: 't18', col: 'done',     text: 'House of Photos contract drafted',              tag: 'bauersoft' },
+  { id: 't19', col: 'done',     text: 'Codebase files downloaded',                    tag: 'flowhub' },
+  { id: 't20', col: 'done',     text: 'GitHub CLI set up (peppajoke)',                 tag: 'infra' },
+  { id: 't24', col: 'done',     text: 'Railway CLI authenticated',                     tag: 'infra' },
+  { id: 't25', col: 'done',     text: 'hello-world deployed to Railway',               tag: 'infra' },
+  { id: 't26', col: 'done',     text: 'Homepage dashboard built',                      tag: 'clea' },
+  { id: 't27', col: 'done',     text: 'Flowhub codebase analysis complete',            tag: 'flowhub' },
+  { id: 't28', col: 'done',     text: 'Simon fixed — ollama direct + history',         tag: 'clea' },
+  { id: 't29', col: 'done',     text: 'Market scan cron active',                       tag: 'clea' },
+  { id: 't30', col: 'done',     text: 'Telegram bot live (@clea_bauersoft_bot)',        tag: 'infra' },
 ];
 
-// ── DB setup ─────────────────────────────────────────────────────────────────
+const SEED_LOGS = [
+  { task_id: 't23', message: 'Switched to Postgres-mNRu after main Postgres was accidentally overwritten with app code via railway up. Lesson: never run railway up while Postgres service is linked.' },
+  { task_id: 't23', message: 'Postgres private networking confirmed working (IPv4 + IPv6 both resolve). Key fix: ssl:false for internal Railway connections.' },
+  { task_id: 't23', message: 'App live at https://clea-status-production.up.railway.app — 19 tasks seeded from kanban.' },
+  { task_id: 't23', message: 'Added task detail pages with activity log. POST /task/:id/log endpoint added for writing entries programmatically.' },
+  { task_id: 't2',  message: 'Sub-agent spawned to read manage-v3 (~3.9k files) and hyperion (~3.1k files).' },
+  { task_id: 't2',  message: 'Analysis complete. Wrote manage-v3-analysis.md and hyperion-analysis.md. Key finding: analytics uses dynamic SQL templates with {COLUMNS}/{GROUP} markers rewritten at runtime.' },
+  { task_id: 't6',  message: 'Added status badges (Active/Paused/Blocked) with colored left borders. Storage key bumped to v3.' },
+  { task_id: 't6',  message: 'Added note field and status picker to modal. Done column tasks show with strikethrough + reduced opacity.' },
+  { task_id: 't6',  message: 'Added task detail pages with activity log (this feature).' },
+  { task_id: 't1',  message: 'Blocked — waiting for Jack to provide Alpaca API keys.' },
+  { task_id: 't8',  message: 'Blocked — Moltbook API key is locked in an encrypted file. Need Jack to surface it.' },
+  { task_id: 't7',  message: 'Researched Samsung Odyssey G95NC HDMI issues. Fix: USB-C → DisplayPort 1.4 cable. Email sent to Jack at 1 AM.' },
+];
+
+// ── DB setup ──────────────────────────────────────────────────────────────────
 async function waitForDb(retries = 10, delayMs = 3000) {
   for (let i = 1; i <= retries; i++) {
     try {
@@ -52,7 +73,7 @@ async function waitForDb(retries = 10, delayMs = 3000) {
       console.log('DB connected');
       return;
     } catch (e) {
-      console.log(`DB not ready (attempt ${i}/${retries}): ${e.message}`);
+      console.log(`DB not ready (${i}/${retries}): ${e.message}`);
       if (i === retries) throw e;
       await new Promise(r => setTimeout(r, delayMs));
     }
@@ -61,19 +82,30 @@ async function waitForDb(retries = 10, delayMs = 3000) {
 
 async function setup() {
   await waitForDb();
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS tasks (
-      id        TEXT PRIMARY KEY,
-      col       TEXT NOT NULL,
-      text      TEXT NOT NULL,
-      tag       TEXT,
-      status    TEXT,
-      meta      TEXT,
+      id         TEXT PRIMARY KEY,
+      col        TEXT NOT NULL,
+      text       TEXT NOT NULL,
+      tag        TEXT,
+      status     TEXT,
+      meta       TEXT,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
-  // Upsert seed data
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS task_logs (
+      id         SERIAL PRIMARY KEY,
+      task_id    TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      message    TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`CREATE INDEX IF NOT EXISTS task_logs_task_id ON task_logs(task_id)`);
+
   for (const t of SEED) {
     await pool.query(`
       INSERT INTO tasks (id, col, text, tag, status, meta)
@@ -81,70 +113,101 @@ async function setup() {
       ON CONFLICT (id) DO UPDATE SET
         col=EXCLUDED.col, text=EXCLUDED.text, tag=EXCLUDED.tag,
         status=EXCLUDED.status, meta=EXCLUDED.meta, updated_at=NOW()
-    `, [t.id, t.col, t.text, t.tag || null, t.status || null, t.meta || null]);
+    `, [t.id, t.col, t.text, t.tag||null, t.status||null, t.meta||null]);
+  }
+
+  // Seed logs only if table is empty
+  const { rows: existing } = await pool.query('SELECT COUNT(*) FROM task_logs');
+  if (parseInt(existing[0].count) === 0) {
+    for (const l of SEED_LOGS) {
+      await pool.query(
+        'INSERT INTO task_logs (task_id, message) VALUES ($1, $2)',
+        [l.task_id, l.message]
+      );
+    }
   }
 
   console.log('DB ready');
 }
 
-// ── HTML render ───────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 const TAG_COLORS = {
-  flowhub:  { bg: '#1a2a4a', color: '#6a9fdf' },
-  bauersoft:{ bg: '#2a1a3a', color: '#9a6adf' },
-  clea:     { bg: '#1a2a1a', color: '#6aaf6a' },
-  infra:    { bg: '#2a2218', color: '#c8a060' },
+  flowhub:   { bg: '#1a2a4a', color: '#6a9fdf' },
+  bauersoft: { bg: '#2a1a3a', color: '#9a6adf' },
+  clea:      { bg: '#1a2a1a', color: '#6aaf6a' },
+  infra:     { bg: '#2a2218', color: '#c8a060' },
 };
 
 const STATUS_STYLES = {
-  active:  { bg: '#0d2016', color: '#4caf6e', border: '#1a4028', dot: '#4caf6e',  label: 'Active'  },
-  paused:  { bg: '#221a0d', color: '#c8943a', border: '#3a2a12', dot: '#c8943a',  label: 'Paused'  },
-  blocked: { bg: '#210d0d', color: '#cf4f4f', border: '#3a1a1a', dot: '#cf4f4f',  label: 'Blocked' },
+  active:  { bg: '#0d2016', color: '#4caf6e', border: '#1a4028', dot: '#4caf6e', label: 'Active'  },
+  paused:  { bg: '#221a0d', color: '#c8943a', border: '#3a2a12', dot: '#c8943a', label: 'Paused'  },
+  blocked: { bg: '#210d0d', color: '#cf4f4f', border: '#3a1a1a', dot: '#cf4f4f', label: 'Blocked' },
 };
 
 const COL_LABELS = { todo: 'Todo', progress: 'In Progress', done: 'Done' };
+const TAG_LABELS  = { flowhub: 'Flowhub', bauersoft: 'BauerSoft', clea: 'Clea', infra: 'Infra' };
 
 function tagPill(tag) {
   if (!tag) return '';
   const s = TAG_COLORS[tag] || { bg: '#222', color: '#888' };
-  return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;background:${s.bg};color:${s.color}">${tag.charAt(0).toUpperCase()+tag.slice(1)}</span>`;
+  return `<span style="display:inline-block;padding:2px 7px;border-radius:4px;font-size:10px;font-weight:600;background:${s.bg};color:${s.color}">${TAG_LABELS[tag] || tag}</span>`;
 }
 
 function statusBadge(status) {
-  if (!status) return '';
+  if (!status || !STATUS_STYLES[status]) return '';
   const s = STATUS_STYLES[status];
-  if (!s) return '';
   return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:4px;background:${s.bg};color:${s.color};border:1px solid ${s.border};white-space:nowrap"><span style="width:5px;height:5px;border-radius:50%;background:${s.dot};display:inline-block"></span>${s.label}</span>`;
 }
 
-function borderColor(status) {
-  return STATUS_STYLES[status]?.dot || 'transparent';
+function fmtDate(d) {
+  return new Date(d).toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }) + ' EST';
 }
 
-function renderCard(t) {
-  const hasBorder = t.status && STATUS_STYLES[t.status];
-  return `
-    <div style="background:#111;border:1px solid #1c1c1c;${hasBorder ? `border-left:3px solid ${borderColor(t.status)};` : ''}border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <span style="font-size:13px;color:#d8d8d8;line-height:1.5;flex:1">${t.text}</span>
-        ${statusBadge(t.status)}
-      </div>
-      ${(t.tag || t.meta) ? `
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        ${tagPill(t.tag)}
-        ${t.meta ? `<span style="font-size:11px;color:#3a3a3a">${t.meta}</span>` : ''}
-      </div>` : ''}
+function page(title, body) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>${title} — Clea</title>
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    body{background:#0a0a0a;color:#d8d8d8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh;padding:32px 28px 60px;max-width:900px;margin:0 auto}
+    a{color:#4a80ff;text-decoration:none}
+    a:hover{text-decoration:underline}
+  </style>
+</head>
+<body>${body}</body>
+</html>`;
+}
+
+function renderCard(t, clickable = true) {
+  const borderColor = STATUS_STYLES[t.status]?.dot;
+  const inner = `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px">
+      <span style="font-size:13px;color:#d8d8d8;line-height:1.5;flex:1">${t.text}</span>
+      ${statusBadge(t.status)}
     </div>
+    ${(t.tag || t.meta) ? `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${tagPill(t.tag)}${t.meta ? `<span style="font-size:11px;color:#3a3a3a">${t.meta}</span>` : ''}</div>` : ''}
   `;
+  if (clickable) {
+    return `<a href="/task/${t.id}" style="display:block;text-decoration:none;background:#111;border:1px solid #1c1c1c;${borderColor ? `border-left:3px solid ${borderColor};` : ''}border-radius:8px;padding:12px 14px;transition:border-color 0.15s" onmouseover="this.style.borderColor='#2e2e2e'" onmouseout="this.style.borderColor='${borderColor || '#1c1c1c'}'">${inner}</a>`;
+  }
+  return `<div style="background:#111;border:1px solid #1c1c1c;${borderColor ? `border-left:3px solid ${borderColor};` : ''}border-radius:8px;padding:12px 14px">${inner}</div>`;
 }
 
 function renderColumn(label, tasks, dotColor) {
   const cards = tasks.length
-    ? tasks.map(renderCard).join('')
+    ? tasks.map(t => renderCard(t)).join('')
     : `<div style="text-align:center;color:#2a2a2a;font-size:12px;padding:20px 0">Nothing here</div>`;
   return `
-    <div style="flex:1;min-width:260px;max-width:380px;display:flex;flex-direction:column;gap:0">
+    <div style="flex:1;min-width:260px;max-width:380px;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;gap:8px;padding:0 4px 12px">
-        <span style="width:8px;height:8px;border-radius:50%;background:${dotColor};display:inline-block;flex-shrink:0"></span>
+        <span style="width:8px;height:8px;border-radius:50%;background:${dotColor};display:inline-block"></span>
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#555">${label}</span>
         <span style="font-size:11px;background:#1a1a1a;color:#444;border-radius:10px;padding:2px 7px;font-weight:600">${tasks.length}</span>
       </div>
@@ -153,69 +216,96 @@ function renderColumn(label, tasks, dotColor) {
   `;
 }
 
-// ── Route ─────────────────────────────────────────────────────────────────────
+// ── Routes ────────────────────────────────────────────────────────────────────
+
+// Board
 app.get('/', async (req, res) => {
   const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY updated_at DESC`);
-
-  const cols = {
-    todo:     rows.filter(r => r.col === 'todo'),
-    progress: rows.filter(r => r.col === 'progress'),
-    done:     rows.filter(r => r.col === 'done'),
-  };
-
-  const totalDone = cols.done.length;
-  const blocked   = rows.filter(r => r.status === 'blocked').length;
-  const active    = rows.filter(r => r.status === 'active').length;
-  const now       = new Date().toLocaleString('en-US', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' });
+  const cols = { todo: rows.filter(r => r.col==='todo'), progress: rows.filter(r => r.col==='progress'), done: rows.filter(r => r.col==='done') };
+  const now = fmtDate(new Date());
+  const blocked = rows.filter(r => r.status==='blocked').length;
+  const active  = rows.filter(r => r.status==='active').length;
 
   res.setHeader('Content-Type', 'text/html');
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Clea — Status</title>
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-    body{background:#0a0a0a;color:#d8d8d8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh;padding:32px 28px 60px;max-width:1200px;margin:0 auto}
-    a{color:inherit;text-decoration:none}
-  </style>
-</head>
-<body>
-
+  res.send(page('Status', `
 <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:36px;padding-bottom:16px;border-bottom:1px solid #1a1a1a">
   <div>
     <h1 style="font-size:20px;font-weight:600;color:#f0f0f0">🎭 Clea — Status</h1>
     <p style="font-size:12px;color:#333;margin-top:4px">Current workload, live from Postgres</p>
   </div>
-  <span style="font-size:11px;color:#2a2a2a">Updated ${now} EST</span>
+  <span style="font-size:11px;color:#2a2a2a">Updated ${now}</span>
 </div>
 
-<!-- Stats -->
 <div style="display:flex;gap:10px;margin-bottom:32px;flex-wrap:wrap">
-  ${[
-    { label: 'Total tasks', value: rows.length, color: '#f0f0f0' },
-    { label: 'Done',        value: totalDone,   color: '#4caf6e' },
-    { label: 'Active',      value: active,      color: '#4a9fdf' },
-    { label: 'Blocked',     value: blocked,     color: '#cf4f4f' },
-  ].map(s => `
+  ${[{label:'Total tasks',value:rows.length,color:'#f0f0f0'},{label:'Done',value:cols.done.length,color:'#4caf6e'},{label:'Active',value:active,color:'#4a9fdf'},{label:'Blocked',value:blocked,color:'#cf4f4f'}].map(s=>`
     <div style="background:#111;border:1px solid #1c1c1c;border-radius:9px;padding:14px 20px;min-width:110px">
       <div style="font-size:22px;font-weight:700;color:${s.color}">${s.value}</div>
       <div style="font-size:11px;color:#3a3a3a;margin-top:2px">${s.label}</div>
-    </div>
-  `).join('')}
+    </div>`).join('')}
 </div>
 
-<!-- Board -->
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
   ${renderColumn(COL_LABELS.todo,     cols.todo,     '#555')}
   ${renderColumn(COL_LABELS.progress, cols.progress, '#4a80ff')}
   ${renderColumn(COL_LABELS.done,     cols.done,     '#4caf6e')}
 </div>
 
-<p style="margin-top:40px;font-size:11px;color:#222;text-align:center">Powered by Railway + Postgres</p>
-</body>
-</html>`);
+<p style="margin-top:40px;font-size:11px;color:#222;text-align:center">Powered by Railway + Postgres · Click any task for details</p>
+`));
+});
+
+// Task detail
+app.get('/task/:id', async (req, res) => {
+  const { id } = req.params;
+  const { rows: tasks } = await pool.query('SELECT * FROM tasks WHERE id=$1', [id]);
+  if (!tasks.length) return res.status(404).send(page('Not found', '<p style="color:#555;margin-top:40px">Task not found.</p>'));
+  const task = tasks[0];
+
+  const { rows: logs } = await pool.query(
+    'SELECT * FROM task_logs WHERE task_id=$1 ORDER BY created_at DESC',
+    [id]
+  );
+
+  const borderColor = STATUS_STYLES[task.status]?.dot;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(page(task.text, `
+<div style="margin-bottom:24px">
+  <a href="/" style="font-size:12px;color:#444">← Back to board</a>
+</div>
+
+${renderCard(task, false)}
+
+<div style="margin-top:32px">
+  <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#333;margin-bottom:12px">
+    Activity Log ${logs.length ? `<span style="color:#2a2a2a;font-weight:400">(${logs.length} entries)</span>` : '<span style="color:#2a2a2a;font-weight:400">(no entries yet)</span>'}
+  </div>
+
+  ${logs.length === 0 ? `
+    <div style="background:#111;border:1px solid #1c1c1c;border-radius:8px;padding:24px;text-align:center;color:#333;font-size:12px">
+      Nothing logged yet.
+    </div>
+  ` : logs.map(l => `
+    <div style="display:flex;gap:16px;padding:12px 0;border-bottom:1px solid #141414;align-items:flex-start">
+      <div style="font-size:10px;color:#2e2e2e;min-width:160px;padding-top:2px;font-family:'SF Mono',monospace;flex-shrink:0">${fmtDate(l.created_at)}</div>
+      <div style="font-size:13px;color:#888;line-height:1.6;flex:1">${l.message}</div>
+    </div>
+  `).join('')}
+</div>
+`));
+});
+
+// Write a log entry (internal use — I call this from cron/scripts)
+app.post('/task/:id/log', async (req, res) => {
+  const secret = process.env.LOG_SECRET || 'clea';
+  if (req.headers['x-clea-secret'] !== secret) return res.status(401).json({ error: 'unauthorized' });
+  const { id } = req.params;
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'message required' });
+  const { rows: tasks } = await pool.query('SELECT id FROM tasks WHERE id=$1', [id]);
+  if (!tasks.length) return res.status(404).json({ error: 'task not found' });
+  await pool.query('INSERT INTO task_logs (task_id, message) VALUES ($1, $2)', [id, message]);
+  res.json({ ok: true });
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
