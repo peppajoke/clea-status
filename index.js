@@ -4,12 +4,12 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const dbUrl = process.env.DATABASE_URL || '';
-console.log('DB URL present:', !!dbUrl, '| internal:', dbUrl.includes('railway.internal'));
+const dbUrl = (process.env.DATABASE_URL || '').replace('?', '?sslmode=disable&').replace(/sslmode=[^&]+/, 'sslmode=disable');
+console.log('Connecting to DB, sslmode=disable');
 
 const pool = new Pool({
-  connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false },
+  connectionString: dbUrl.includes('sslmode=') ? dbUrl : dbUrl + '?sslmode=disable',
+  ssl: false,
   connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,
 });
