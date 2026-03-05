@@ -2,20 +2,7 @@ const dns = require('dns');
 const net = require('net');
 dns.setDefaultResultOrder('ipv6first');
 
-// Debug: resolve and raw TCP test
-dns.lookup('postgres.railway.internal', { all: true }, (err, addrs) => {
-  if (err) return console.log('DNS error:', err.message);
-  console.log('DNS:', JSON.stringify(addrs));
-  // Raw TCP test to each address
-  addrs.forEach(({ address, family }) => {
-    const sock = net.createConnection({ host: address, port: 5432, family }, () => {
-      console.log(`TCP OK: [${family}] ${address}:5432`);
-      sock.destroy();
-    });
-    sock.on('error', e => console.log(`TCP FAIL: [${family}] ${address}:5432 — ${e.message}`));
-    setTimeout(() => { if (!sock.destroyed) { console.log(`TCP TIMEOUT: [${family}] ${address}:5432`); sock.destroy(); } }, 5000);
-  });
-});
+
 
 const express = require('express');
 const { Pool } = require('pg');
@@ -23,19 +10,13 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Parse DATABASE_URL and connect directly by IP to avoid any hostname/SSL weirdness
-const rawUrl = process.env.DATABASE_URL || '';
-const urlObj = new URL(rawUrl.replace('?sslmode=require','').replace('?sslmode=disable',''));
-console.log('Connecting: host=%s user=%s db=%s', urlObj.hostname, urlObj.username, urlObj.pathname.slice(1));
+const dbUrl = (process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL || '').split('?')[0];
+console.log('Connecting to:', dbUrl.replace(/:([^@]+)@/, ':***@'));
 
 const pool = new Pool({
-  host: '10.217.122.108', // resolved IPv4 from DNS
-  port: 5432,
-  user: urlObj.username,
-  password: urlObj.password,
-  database: urlObj.pathname.slice(1),
-  ssl: false,
-  connectionTimeoutMillis: 10000,
+  connectionString: dbUrl,
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,
 });
 
