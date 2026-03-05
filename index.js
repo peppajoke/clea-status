@@ -14,12 +14,18 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const dbUrl = process.env.DATABASE_URL || '';
-console.log('DB URL:', dbUrl.replace(/:([^@]+)@/, ':***@'));
+// Parse DATABASE_URL and connect directly by IP to avoid any hostname/SSL weirdness
+const rawUrl = process.env.DATABASE_URL || '';
+const urlObj = new URL(rawUrl.replace('?sslmode=require','').replace('?sslmode=disable',''));
+console.log('Connecting: host=%s user=%s db=%s', urlObj.hostname, urlObj.username, urlObj.pathname.slice(1));
 
 const pool = new Pool({
-  connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false, checkServerIdentity: () => undefined },
+  host: '10.217.122.108', // resolved IPv4 from DNS
+  port: 5432,
+  user: urlObj.username,
+  password: urlObj.password,
+  database: urlObj.pathname.slice(1),
+  ssl: false,
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
 });
