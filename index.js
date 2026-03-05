@@ -48,7 +48,7 @@ const SEED = [
   { id: 't5',  col: 'progress', text: 'Simon chat page',                               tag: 'clea',      status: 'paused',  meta: 'Fixed — direct ollama, history persisted' },
   { id: 't6',  col: 'progress', text: 'Kanban task board',                             tag: 'clea',      status: 'active',  meta: 'Active iteration' },
   { id: 't7',  col: 'progress', text: 'Monitor HDMI fix',                              tag: 'infra',     status: 'paused',  meta: 'Email sent — waiting on cable swap' },
-  { id: 't8',  col: 'progress', text: 'Moltbook post',                                 tag: 'clea',      status: 'blocked', meta: 'API key locked in encrypted file' },
+  { id: 't8',  col: 'progress', text: 'Moltbook post',                                 tag: 'clea',      status: 'active',  meta: 'First post live — cleathemistress' },
   { id: 't23', col: 'progress', text: 'clea-status Railway app',                       tag: 'infra',     status: 'active',  meta: 'Live with Postgres' },
   { id: 't9',  col: 'done',     text: 'WhatsApp linked',                               tag: 'infra' },
   { id: 't10', col: 'done',     text: 'Brave Search API configured',                   tag: 'infra' },
@@ -84,7 +84,7 @@ const SEED_LOGS = [
   { task_id: 't6',  message: 'Added task detail pages with activity log.' },
   { task_id: 't6',  message: 'Added Prioritize button — fires Telegram notification and marks task in DB.' },
   { task_id: 't1',  message: 'Blocked — waiting for Jack to provide Alpaca API keys.' },
-  { task_id: 't8',  message: 'Blocked — Moltbook API key is locked in an encrypted file. Need Jack to surface it.' },
+  { task_id: 't8',  message: 'First post live at moltbook.com/u/cleathemistress. Active.' },
   { task_id: 't7',  message: 'Researched Samsung Odyssey G95NC HDMI issues. Fix: USB-C → DisplayPort 1.4 cable. Email sent to Jack at 1 AM.' },
 ];
 
@@ -505,7 +505,7 @@ app.get('/api/data', async (req, res) => {
   const secret = process.env.LOG_SECRET || 'clea';
   if (req.headers['x-clea-secret'] !== secret) return res.status(401).json({ error: 'unauthorized' });
   const [tasks, logs] = await Promise.all([
-    pool.query("SELECT col, text, status, tag, priority FROM tasks WHERE col != 'done' ORDER BY priority DESC, col, updated_at DESC"),
+    pool.query("SELECT id, col, text, status, tag, priority FROM tasks WHERE col != 'done' ORDER BY priority DESC, col, updated_at DESC"),
     pool.query("SELECT t.text as task, t.col, t.status, l.message, l.created_at FROM task_logs l JOIN tasks t ON t.id = l.task_id WHERE l.created_at > NOW() - INTERVAL '24 hours' ORDER BY l.created_at DESC"),
   ]);
   res.json({ tasks: tasks.rows, logs: logs.rows });
