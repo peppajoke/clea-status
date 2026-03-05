@@ -1,5 +1,12 @@
 const dns = require('dns');
+const net = require('net');
 dns.setDefaultResultOrder('ipv6first');
+
+// Debug: resolve postgres hostname
+dns.lookup('postgres.railway.internal', { all: true }, (err, addrs) => {
+  if (err) console.log('DNS lookup error:', err.message);
+  else console.log('DNS resolved:', JSON.stringify(addrs));
+});
 
 const express = require('express');
 const { Pool } = require('pg');
