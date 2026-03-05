@@ -461,6 +461,19 @@ app.post('/task/:id/prioritize', requireWrite, async (req, res) => {
   res.json({ ok: true, priority });
 });
 
+// Update a task (status, col, meta, text)
+app.patch('/task/:id', requireWrite, async (req, res) => {
+  const { id } = req.params;
+  const allowed = ['status', 'col', 'meta', 'text', 'tag'];
+  const updates = Object.entries(req.body).filter(([k]) => allowed.includes(k));
+  if (!updates.length) return res.status(400).json({ error: 'nothing to update' });
+  const setClauses = updates.map(([k], i) => `${k}=$${i + 1}`).join(', ');
+  const values = updates.map(([, v]) => v);
+  values.push(id);
+  await pool.query(`UPDATE tasks SET ${setClauses}, updated_at=NOW() WHERE id=$${values.length}`, values);
+  res.json({ ok: true });
+});
+
 // Delete a task
 app.delete('/task/:id', requireWrite, async (req, res) => {
   const { id } = req.params;
