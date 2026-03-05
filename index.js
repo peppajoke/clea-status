@@ -138,8 +138,7 @@ async function setup() {
       INSERT INTO tasks (id, col, text, tag, status, meta)
       VALUES ($1,$2,$3,$4,$5,$6)
       ON CONFLICT (id) DO UPDATE SET
-        col=EXCLUDED.col, text=EXCLUDED.text, tag=EXCLUDED.tag,
-        status=EXCLUDED.status, meta=EXCLUDED.meta, updated_at=NOW()
+        text=EXCLUDED.text, tag=EXCLUDED.tag
     `, [t.id, t.col, t.text, t.tag||null, t.status||null, t.meta||null]);
   }
 
