@@ -9,7 +9,7 @@ console.log('DB URL:', dbUrl.replace(/:([^@]+)@/, ':***@'));
 
 const pool = new Pool({
   connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false, checkServerIdentity: () => undefined },
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
 });
