@@ -9,8 +9,8 @@ console.log('DB URL present:', !!dbUrl, '| internal:', dbUrl.includes('railway.i
 
 const pool = new Pool({
   connectionString: dbUrl,
-  ssl: dbUrl.includes('railway.internal') ? false : { rejectUnauthorized: false },
-  connectionTimeoutMillis: 10000,
+  ssl: { rejectUnauthorized: false },
+  connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,
 });
 
