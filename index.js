@@ -326,7 +326,7 @@ app.get('/task/:id', async (req, res) => {
   const task = tasks[0];
 
   const { rows: logs } = await pool.query(
-    'SELECT * FROM task_logs WHERE task_id=$1 ORDER BY created_at DESC',
+    'SELECT * FROM task_logs WHERE task_id=$1 ORDER BY created_at ASC',
     [id]
   );
 
