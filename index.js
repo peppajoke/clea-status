@@ -18,8 +18,9 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
 });
 
-const TG_TOKEN  = process.env.TG_TOKEN  || '8223125498:AAE6qVmNnXvW0MkQOfJT8h94liTxeRZfxKU';
-const TG_CHAT   = process.env.TG_CHAT   || '8728761353';
+const TG_TOKEN      = process.env.TG_TOKEN       || '8223125498:AAE6qVmNnXvW0MkQOfJT8h94liTxeRZfxKU';
+const TG_CHAT       = process.env.TG_CHAT        || '8728761353';
+const WRITE_PASSWORD = process.env.WRITE_PASSWORD || 'jack2026';
 
 // ── Telegram helper ───────────────────────────────────────────────────────────
 function tgSend(text) {
@@ -213,6 +214,16 @@ function page(title, body) {
     .btn:active{opacity:0.7}
     .btn-priority{background:#f5a623;color:#000}
     .btn-deprioritize{background:#1e1e1e;color:#555;border:1px solid #2a2a2a}
+    .btn-delete{background:#1e0a0a;color:#cf4f4f;border:1px solid #3a1a1a}
+    .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);z-index:100;align-items:center;justify-content:center}
+    .modal-overlay.active{display:flex}
+    .modal{background:#111;border:1px solid #2a2a2a;border-radius:12px;padding:28px;width:320px;max-width:90vw}
+    .modal h3{font-size:15px;color:#f0f0f0;margin-bottom:8px}
+    .modal p{font-size:12px;color:#444;margin-bottom:16px}
+    .modal input{width:100%;background:#0a0a0a;border:1px solid #2a2a2a;border-radius:6px;padding:10px 12px;color:#d8d8d8;font-size:14px;outline:none;margin-bottom:12px}
+    .modal input:focus{border-color:#444}
+    .modal-error{font-size:11px;color:#cf4f4f;margin-bottom:10px;display:none}
+    .modal-actions{display:flex;gap:8px;justify-content:flex-end}
   </style>
 </head>
 <body>${body}</body>
@@ -252,6 +263,16 @@ function renderColumn(label, tasks, dotColor) {
       <div style="display:flex;flex-direction:column;gap:8px">${cards}</div>
     </div>
   `;
+}
+
+// ── Auth middleware ───────────────────────────────────────────────────────────
+// Write endpoints accept either the internal LOG_SECRET (Clea's scripts) or the WRITE_PASSWORD (Jack's browser)
+function requireWrite(req, res, next) {
+  const secret = process.env.LOG_SECRET || 'clea';
+  const internalOk = req.headers['x-clea-secret'] === secret;
+  const browserOk  = req.headers['x-write-password'] === WRITE_PASSWORD;
+  if (internalOk || browserOk) return next();
+  return res.status(401).json({ error: 'unauthorized' });
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -310,14 +331,17 @@ app.get('/task/:id', async (req, res) => {
   );
 
   const prioritizeBtn = task.priority
-    ? `<button class="btn btn-deprioritize" onclick="setPriority(false)">Remove Priority</button>`
-    : `<button class="btn btn-priority" onclick="setPriority(true)">⚡ Prioritize</button>`;
+    ? `<button class="btn btn-deprioritize" onclick="requireAuth(() => setPriority(false))">Remove Priority</button>`
+    : `<button class="btn btn-priority" onclick="requireAuth(() => setPriority(true))">⚡ Prioritize</button>`;
 
   res.setHeader('Content-Type', 'text/html');
   res.send(page(task.text, `
 <div style="margin-bottom:24px;display:flex;align-items:center;justify-content:space-between">
   <a href="/" style="font-size:12px;color:#444">← Back to board</a>
-  <div id="btn-container">${prioritizeBtn}</div>
+  <div style="display:flex;gap:8px">
+    <div id="btn-container">${prioritizeBtn}</div>
+    <button class="btn btn-delete" onclick="requireAuth(() => deleteTask())">Delete</button>
+  </div>
 </div>
 
 ${renderCard(task, false)}
@@ -341,54 +365,115 @@ ${renderCard(task, false)}
   </div>
 </div>
 
+<div class="modal-overlay" id="auth-modal">
+  <div class="modal">
+    <h3>🔒 Write access required</h3>
+    <p>Enter the write password to continue.</p>
+    <input type="password" id="auth-input" placeholder="Password" onkeydown="if(event.key==='Enter')submitAuth()"/>
+    <div class="modal-error" id="auth-error">Wrong password.</div>
+    <div class="modal-actions">
+      <button class="btn btn-deprioritize" onclick="cancelAuth()">Cancel</button>
+      <button class="btn btn-priority" onclick="submitAuth()">Unlock</button>
+    </div>
+  </div>
+</div>
+
 <script>
+const SESSION_KEY = 'clea_write_auth';
+let pendingAction = null;
+
+function getStoredPw() { return sessionStorage.getItem('clea_write_pw_val') || ''; }
+
+function requireAuth(action) {
+  if (sessionStorage.getItem(SESSION_KEY) === '1') { action(); return; }
+  pendingAction = action;
+  document.getElementById('auth-modal').classList.add('active');
+  setTimeout(() => document.getElementById('auth-input').focus(), 50);
+}
+
+function cancelAuth() {
+  pendingAction = null;
+  document.getElementById('auth-modal').classList.remove('active');
+  document.getElementById('auth-input').value = '';
+  document.getElementById('auth-error').style.display = 'none';
+}
+
+async function submitAuth() {
+  const pw = document.getElementById('auth-input').value;
+  const r = await fetch('/auth/verify', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ password: pw })
+  });
+  if (r.ok) {
+    sessionStorage.setItem(SESSION_KEY, '1');
+    sessionStorage.setItem('clea_write_pw_val', pw);
+    document.getElementById('auth-modal').classList.remove('active');
+    document.getElementById('auth-input').value = '';
+    document.getElementById('auth-error').style.display = 'none';
+    if (pendingAction) { const a = pendingAction; pendingAction = null; a(); }
+  } else {
+    document.getElementById('auth-error').style.display = 'block';
+    document.getElementById('auth-input').value = '';
+    document.getElementById('auth-input').focus();
+  }
+}
+
 async function setPriority(on) {
   const btn = document.querySelector('#btn-container button');
   btn.disabled = true;
   btn.textContent = on ? 'Prioritizing…' : 'Removing…';
-  try {
-    const r = await fetch('/task/${id}/prioritize', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ priority: on })
-    });
-    if (r.ok) {
-      window.location.reload();
-    } else {
-      btn.disabled = false;
-      btn.textContent = on ? '⚡ Prioritize' : 'Remove Priority';
-      alert('Something went wrong.');
-    }
-  } catch(e) {
-    btn.disabled = false;
-    btn.textContent = on ? '⚡ Prioritize' : 'Remove Priority';
-  }
+  const r = await fetch('/task/${id}/prioritize', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json', 'x-write-password': getStoredPw()},
+    body: JSON.stringify({ priority: on })
+  });
+  if (r.ok) { window.location.reload(); }
+  else { btn.disabled = false; btn.textContent = on ? '⚡ Prioritize' : 'Remove Priority'; }
+}
+
+async function deleteTask() {
+  if (!confirm('Delete this task? This cannot be undone.')) return;
+  const r = await fetch('/task/${id}', {
+    method: 'DELETE',
+    headers: {'Content-Type':'application/json', 'x-write-password': getStoredPw()}
+  });
+  if (r.ok) { window.location.href = '/'; }
+  else { alert('Delete failed.'); }
 }
 </script>
 `));
 });
 
 // Prioritize a task
-app.post('/task/:id/prioritize', async (req, res) => {
+app.post('/task/:id/prioritize', requireWrite, async (req, res) => {
   const { id } = req.params;
-  const priority = req.body.priority !== false; // default true
-
+  const priority = req.body.priority !== false;
   const { rows: tasks } = await pool.query('SELECT * FROM tasks WHERE id=$1', [id]);
   if (!tasks.length) return res.status(404).json({ error: 'task not found' });
   const task = tasks[0];
-
   await pool.query('UPDATE tasks SET priority=$1, updated_at=NOW() WHERE id=$2', [priority, id]);
-
-  const logMsg = priority
-    ? `Marked as priority by Jack. Starting aggressive work.`
-    : `Priority removed.`;
+  const logMsg = priority ? `Marked as priority by Jack. Starting aggressive work.` : `Priority removed.`;
   await pool.query('INSERT INTO task_logs (task_id, message) VALUES ($1, $2)', [id, logMsg]);
-
   if (priority) {
     await tgSend(`⚡ <b>Priority task flagged:</b> ${task.text}\n\nStarting on it now. Will reach out if I need anything from you.`);
   }
-
   res.json({ ok: true, priority });
+});
+
+// Delete a task
+app.delete('/task/:id', requireWrite, async (req, res) => {
+  const { id } = req.params;
+  const { rows: tasks } = await pool.query('SELECT text FROM tasks WHERE id=$1', [id]);
+  if (!tasks.length) return res.status(404).json({ error: 'task not found' });
+  await pool.query('DELETE FROM tasks WHERE id=$1', [id]);
+  res.json({ ok: true });
+});
+
+// Verify write password
+app.post('/auth/verify', (req, res) => {
+  if (req.body.password === WRITE_PASSWORD) return res.json({ ok: true });
+  return res.status(401).json({ ok: false, error: 'Wrong password' });
 });
 
 // Data API — returns tasks + recent logs (used by external scripts/cron)
@@ -402,10 +487,8 @@ app.get('/api/data', async (req, res) => {
   res.json({ tasks: tasks.rows, logs: logs.rows });
 });
 
-// Write a log entry
-app.post('/task/:id/log', async (req, res) => {
-  const secret = process.env.LOG_SECRET || 'clea';
-  if (req.headers['x-clea-secret'] !== secret) return res.status(401).json({ error: 'unauthorized' });
+// Write a log entry (internal)
+app.post('/task/:id/log', requireWrite, async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
   if (!message) return res.status(400).json({ error: 'message required' });
