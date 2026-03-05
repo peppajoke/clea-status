@@ -13,9 +13,10 @@ const port = process.env.PORT || 3000;
 const dbUrl = (process.env.DATABASE_URL || '').split('?')[0];
 console.log('Connecting to:', dbUrl.replace(/:([^@]+)@/, ':***@'));
 
+const isInternal = dbUrl.includes('.railway.internal');
 const pool = new Pool({
   connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false },
+  ssl: isInternal ? false : { rejectUnauthorized: false },
   connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,
 });
