@@ -9,7 +9,7 @@ console.log('DB URL:', dbUrl.replace(/:([^@]+)@/, ':***@'));
 
 const pool = new Pool({
   connectionString: dbUrl,
-  ssl: dbUrl.includes('railway.internal') ? false : { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false },
   connectionTimeoutMillis: 10000,
   idleTimeoutMillis: 30000,
 });
