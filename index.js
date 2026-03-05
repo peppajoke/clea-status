@@ -10,12 +10,11 @@ const { Pool } = require('pg');
 const app = express();
 const port = process.env.PORT || 3000;
 
-const dbUrl = (process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL || '').split('?')[0];
+const dbUrl = (process.env.DATABASE_PUBLIC_URL || process.env.DATABASE_URL || '').split('?')[0] + '?sslmode=no-verify';
 console.log('Connecting to:', dbUrl.replace(/:([^@]+)@/, ':***@'));
 
 const pool = new Pool({
   connectionString: dbUrl,
-  ssl: { rejectUnauthorized: false },
   connectionTimeoutMillis: 15000,
   idleTimeoutMillis: 30000,
 });
