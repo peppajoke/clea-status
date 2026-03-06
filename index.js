@@ -135,6 +135,25 @@ async function setup() {
 
   await pool.query(`CREATE INDEX IF NOT EXISTS task_logs_task_id ON task_logs(task_id)`);
 
+  // Node state persistence
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS node_state (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // Load persisted claude mode
+  const { rows: cmRows } = await pool.query(`SELECT value FROM node_state WHERE key='claudeEnabled'`);
+  if (cmRows.length) claudeEnabled = cmRows[0].value === 'true';
+
+  // Load persisted heartbeats
+  const { rows: hbRows } = await pool.query(`SELECT value FROM node_state WHERE key='nodeHeartbeats'`);
+  if (hbRows.length) {
+    try { Object.assign(nodeHeartbeats, JSON.parse(hbRows[0].value)); } catch {}
+  }
+
   for (const t of SEED) {
     await pool.query(`
       INSERT INTO tasks (id, col, text, tag, status, meta)
@@ -514,12 +533,23 @@ app.get('/api/data', async (req, res) => {
 
 // Write a log entry (internal)
 // ── Heartbeat endpoints for Clea node network ────────────────────────────────
-const nodeHeartbeats = {}; // in-memory: { nodeName: { role, ts, name } }
+const nodeHeartbeats = {}; // { nodeName: { role, ts } } — persisted to postgres
+let claudeEnabled = true; // persisted to postgres
+
+async function persistState(key, value) {
+  try {
+    await pool.query(`
+      INSERT INTO node_state (key, value, updated_at) VALUES ($1, $2, NOW())
+      ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated_at=NOW()
+    `, [key, String(value)]);
+  } catch(e) { console.error('[persist]', e.message); }
+}
 
 app.post('/heartbeat/ping', requireWrite, (req, res) => {
   const { node, role, ts } = req.body || {};
   if (!node) return res.status(400).json({ error: 'node required' });
   nodeHeartbeats[node] = { node, role: role || 'replica', ts: ts || Math.floor(Date.now() / 1000) };
+  persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
   res.json({ ok: true });
 });
 
@@ -559,6 +589,7 @@ app.post('/heartbeat/promote', requireWrite, (req, res) => {
   Object.values(nodeHeartbeats).forEach(n => { if (n.role === 'prime') n.role = 'replica'; });
   nodeHeartbeats[node] = { node, role: 'prime', ts: ts || Math.floor(Date.now() / 1000) };
   console.log(`[heartbeat] ${node} promoted to Prime`);
+  persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
   res.json({ ok: true, prime: node });
 });
 
@@ -578,8 +609,6 @@ function queueEmail(subject, body) {
 }
 
 // ── Claude mode toggle ────────────────────────────────────────────────────────
-let claudeEnabled = true;
-
 app.get('/node/claude-mode', requireWrite, (req, res) => {
   res.json({ claudeEnabled });
 });
@@ -588,6 +617,7 @@ app.post('/node/claude-mode', requireWrite, (req, res) => {
   const { enabled } = req.body || {};
   if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) required' });
   claudeEnabled = enabled;
+  persistState('claudeEnabled', String(enabled));
   console.log(`[claude-mode] Claude ${enabled ? 'ENABLED' : 'DISABLED'}`);
   queueEmail(
     `Claude ${enabled ? 'enabled ✅' : 'disabled 🔴'} on all nodes`,
