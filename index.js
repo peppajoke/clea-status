@@ -154,6 +154,12 @@ async function setup() {
     try { Object.assign(nodeHeartbeats, JSON.parse(hbRows[0].value)); } catch {}
   }
 
+  // Load persisted hidden nodes
+  const { rows: hnRows } = await pool.query(`SELECT value FROM node_state WHERE key='hiddenNodes'`);
+  if (hnRows.length) {
+    try { JSON.parse(hnRows[0].value).forEach(n => hiddenNodes.add(n)); } catch {}
+  }
+
   for (const t of SEED) {
     await pool.query(`
       INSERT INTO tasks (id, col, text, tag, status, meta)
@@ -534,6 +540,7 @@ app.get('/api/data', async (req, res) => {
 // Write a log entry (internal)
 // ── Heartbeat endpoints for Clea node network ────────────────────────────────
 const nodeHeartbeats = {}; // { nodeName: { role, ts } } — persisted to postgres
+const hiddenNodes = new Set(); // nodes that are hidden (quiet offline)
 let claudeEnabled = true; // persisted to postgres
 
 async function persistState(key, value) {
@@ -550,6 +557,14 @@ app.post('/heartbeat/ping', requireWrite, (req, res) => {
   if (!node) return res.status(400).json({ error: 'node required' });
   const now = Math.floor(Date.now() / 1000);
 
+  // If node is hidden — tell it to go quiet, don't count it for elections
+  if (hiddenNodes.has(node)) {
+    // Still record the ping so we know it's alive, but force replica + mark hidden
+    nodeHeartbeats[node] = { node, role: 'replica', ts: ts || now, hidden: true };
+    persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+    return res.json({ ok: true, role: 'replica', hidden: true });
+  }
+
   // If this node claims prime but a different prime already exists, demote it
   let effectiveRole = role || 'replica';
   let demoted = false;
@@ -562,16 +577,48 @@ app.post('/heartbeat/ping', requireWrite, (req, res) => {
     }
   }
 
-  nodeHeartbeats[node] = { node, role: effectiveRole, ts: ts || now };
+  nodeHeartbeats[node] = { node, role: effectiveRole, ts: ts || now, hidden: false };
   persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
   res.json({ ok: true, role: effectiveRole, demoted });
 });
 
 app.get('/heartbeat/status', requireWrite, (req, res) => {
   const now = Math.floor(Date.now() / 1000);
-  const nodes = Object.values(nodeHeartbeats).map(n => ({ ...n, ageSeconds: now - n.ts }));
-  const prime = nodes.find(n => n.role === 'prime') || null;
+  const nodes = Object.values(nodeHeartbeats).map(n => ({
+    ...n,
+    ageSeconds: now - n.ts,
+    hidden: hiddenNodes.has(n.node)
+  }));
+  // Only non-hidden nodes count as Prime
+  const prime = nodes.find(n => n.role === 'prime' && !n.hidden) || null;
   res.json({ prime, nodes, now });
+});
+
+// ── Hide / Unhide endpoints ───────────────────────────────────────────────────
+app.post('/heartbeat/node/:name/hide', requireWrite, (req, res) => {
+  const { name } = req.params;
+  hiddenNodes.add(name);
+  persistState('hiddenNodes', JSON.stringify([...hiddenNodes]));
+  // If this node was Prime, demote it
+  if (nodeHeartbeats[name]?.role === 'prime') {
+    nodeHeartbeats[name].role = 'replica';
+    persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+    console.log(`[heartbeat] ${name} hidden — demoted from Prime`);
+  }
+  console.log(`[heartbeat] ${name} marked hidden`);
+  res.json({ ok: true, hidden: name });
+});
+
+app.post('/heartbeat/node/:name/unhide', requireWrite, (req, res) => {
+  const { name } = req.params;
+  hiddenNodes.delete(name);
+  persistState('hiddenNodes', JSON.stringify([...hiddenNodes]));
+  if (nodeHeartbeats[name]) {
+    nodeHeartbeats[name].hidden = false;
+    persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+  }
+  console.log(`[heartbeat] ${name} unhidden`);
+  res.json({ ok: true, unhidden: name });
 });
 
 // ── Discord token gate — only returns token if requesting node is Prime ───────

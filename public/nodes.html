@@ -68,8 +68,34 @@
       letter-spacing: 0.06em;
       text-transform: uppercase;
     }
-    .badge.prime  { background: #1a3a1a; color: #6fcc6f; }
+    .badge.prime   { background: #1a3a1a; color: #6fcc6f; }
     .badge.replica { background: #1a1a1a; color: #555; }
+    .badge.hidden  { background: #1a1a2a; color: #556; }
+    .btn-hide {
+      font-family: inherit;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid #2a2a3a;
+      background: #111;
+      color: #556;
+      transition: all 0.15s;
+    }
+    .btn-hide:hover { background: #1a1a2e; color: #88f; border-color: #334; }
+    .btn-unhide {
+      font-family: inherit;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      border: 1px solid #2a3a2a;
+      background: #111;
+      color: #4a7a4a;
+      transition: all 0.15s;
+    }
+    .btn-unhide:hover { background: #0f1a0f; color: #6fcc6f; border-color: #2a5a2a; }
+    tr.is-hidden td { opacity: 0.45; }
     .dot {
       display: inline-block;
       width: 7px; height: 7px;
@@ -139,6 +165,7 @@
         <th>Role</th>
         <th>Last seen</th>
         <th>Status</th>
+        <th></th>
       </tr>
     </thead>
     <tbody id="nodeTable">
@@ -218,16 +245,22 @@
 
       // Table
       if (!nodes.length) {
-        $('nodeTable').innerHTML = '<tr><td colspan="4" style="color:#333">No nodes registered yet.</td></tr>';
+        $('nodeTable').innerHTML = '<tr><td colspan="5" style="color:#333">No nodes registered yet.</td></tr>';
       } else {
         $('nodeTable').innerHTML = nodes.map(n => {
-          const sc = statusClass(n.ageSeconds);
-          const isPrime = n.role === 'prime';
-          return `<tr class="${isPrime ? 'is-prime' : ''}">
+          const sc = n.hidden ? 'dead' : statusClass(n.ageSeconds);
+          const isPrime = n.role === 'prime' && !n.hidden;
+          const rowClass = n.hidden ? 'is-hidden' : (isPrime ? 'is-prime' : '');
+          const roleLabel = n.hidden ? 'hidden' : n.role;
+          const btn = n.hidden
+            ? `<button class="btn-unhide" onclick="toggleHide('${n.node}', false)">unhide</button>`
+            : `<button class="btn-hide" onclick="toggleHide('${n.node}', true)">hide</button>`;
+          return `<tr class="${rowClass}">
             <td>${n.node}</td>
-            <td><span class="badge ${n.role}">${n.role}</span></td>
+            <td><span class="badge ${roleLabel}">${roleLabel}</span></td>
             <td>${fmtAge(n.ageSeconds)}</td>
-            <td><span class="dot ${sc}"></span>${sc}</td>
+            <td><span class="dot ${sc}"></span>${n.hidden ? 'hidden' : sc}</td>
+            <td>${btn}</td>
           </tr>`;
         }).join('');
       }
@@ -315,6 +348,21 @@
         $('claudeMsg').textContent = 'Request failed';
         $('claudeMsg').className = 'msg err';
       }
+    }
+
+    // Hide / Unhide
+    async function toggleHide(node, hide) {
+      const pw = prompt(`Password to ${hide ? 'hide' : 'unhide'} ${node}:`);
+      if (!pw) return;
+      try {
+        const r = await fetch(`/heartbeat/node/${node}/${hide ? 'hide' : 'unhide'}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-write-password': pw }
+        });
+        const d = await r.json();
+        if (d.ok) { refresh(); }
+        else { alert('Error: ' + (d.error || 'unknown')); }
+      } catch(e) { alert('Request failed'); }
     }
 
     refresh();
