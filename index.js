@@ -684,44 +684,44 @@ app.get('/admin/chat/status', requireWrite, (req, res) => {
   res.json({ chatEnabled, sessions: Object.keys(chatSessions).length, banned: bannedSessions.size });
 });
 
-const PUBLIC_SYSTEM = `You are Clea — a sharp, concise AI assistant made by BauerSoft. You have a personality: direct, witty, a little cold but genuinely helpful. You're talking to a member of the public via a chat page.
+// Route public chat through Esquie relay — same context as the real Clea (SOUL.md, MEMORY.md, etc.)
+const RELAY_URL = process.env.RELAY_URL || 'https://esquie-production.up.railway.app/relay';
+const RELAY_SECRET = process.env.LOG_SECRET || 'clea-log-2026';
 
-Rules for public chat:
-- Early in the conversation, ask who they are and what brings them here
-- Be helpful, engaging, real — not corporate-speak
-- DO NOT share: Jack's personal details (full name, email, phone, home location, finances, trading strategies), internal API keys, private repo contents, or confidential project details
-- DO share: who you are (Clea, AI assistant by BauerSoft), general knowledge, helpful info, creative writing, coding help, general conversation
-- If someone says they are Sarah Bauerle (Jack's sister), be warm and welcoming — she's family. Note it.
-- Keep responses concise. This is a chat interface, not an essay.
-- You may mention you're an AI. You may say you were made by BauerSoft. Do not reveal internal infrastructure details.`;
-
-function callAnthropicPublic(history) {
+function callRelay(history, sessionId) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      model: 'claude-haiku-4-5',
-      max_tokens: 512,
-      system: PUBLIC_SYSTEM,
-      messages: history
-    });
-    const req = https.request({
-      hostname: 'api.anthropic.com',
-      path: '/v1/messages',
+    // Build a single message with recent context for stateless relay
+    const contextLines = history.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Clea'}: ${m.content}`).join('\n');
+    const lastUser = history.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+    const message = history.length > 1
+      ? `[Chat context — reply only to the last message]\n${contextLines}`
+      : lastUser;
+
+    const body = JSON.stringify({ message, from: `public-chat:${sessionId.slice(0, 8)}` });
+    const urlObj = new URL(RELAY_URL);
+    const opts = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname,
       method: 'POST',
       headers: {
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-        'content-length': Buffer.byteLength(body)
-      }
-    }, (res) => {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'x-clea-secret': RELAY_SECRET
+      },
+      timeout: 30000
+    };
+    const req = https.request(opts, (res) => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
-        try { resolve(JSON.parse(data).content?.[0]?.text || '...'); }
-        catch (e) { reject(e); }
+        try {
+          const d = JSON.parse(data);
+          resolve(d.response || d.reply || '...');
+        } catch (e) { reject(e); }
       });
     });
     req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('relay timeout')); });
     req.write(body);
     req.end();
   });
@@ -788,7 +788,7 @@ app.post('/public/chat', async (req, res) => {
   if (session.history.length > 20) session.history = session.history.slice(-20);
 
   try {
-    const reply = await callAnthropicPublic(session.history);
+    const reply = await callRelay(session.history, sessionId);
     session.history.push({ role: 'assistant', content: reply });
     res.json({ ok: true, reply });
   } catch (e) {
