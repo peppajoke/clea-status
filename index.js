@@ -5,9 +5,11 @@ const express = require('express');
 const { Pool } = require('pg');
 const https = require('https');
 
+const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
 const dbUrl = (process.env.DATABASE_URL || '').split('?')[0];
 const isInternal = dbUrl.includes('.railway.internal');

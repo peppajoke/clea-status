@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Clea — Node Network</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a;
+      color: #d8d8d8;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      min-height: 100vh;
+      padding: 32px 28px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    a { color: #666; text-decoration: none; }
+    a:hover { color: #d8d8d8; }
+
+    .header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
+    .header h1 { font-size: 18px; font-weight: 600; color: #fff; letter-spacing: 0.04em; }
+    .header .nav { font-size: 12px; color: #555; }
+
+    .prime-banner {
+      background: #0f1a0f;
+      border: 1px solid #1e3a1e;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .prime-banner .label { font-size: 11px; color: #4a9a4a; text-transform: uppercase; letter-spacing: 0.08em; }
+    .prime-banner .name { font-size: 15px; font-weight: 600; color: #6fcc6f; }
+    .prime-banner .age { font-size: 11px; color: #3a6a3a; margin-left: auto; }
+
+    .section-title {
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 10px;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+    th {
+      text-align: left;
+      font-size: 10px;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 0 10px 8px 10px;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    td { padding: 10px; border-bottom: 1px solid #111; vertical-align: middle; }
+    tr:hover td { background: #0f0f0f; }
+    tr.is-prime td { background: #0a140a; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .badge.prime  { background: #1a3a1a; color: #6fcc6f; }
+    .badge.replica { background: #1a1a1a; color: #555; }
+    .dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .dot.alive { background: #4a9a4a; box-shadow: 0 0 4px #4a9a4a; }
+    .dot.stale { background: #9a4a4a; box-shadow: 0 0 4px #9a4a4a; }
+    .dot.dead  { background: #3a3a3a; }
+
+    .promote-section {
+      background: #0f0f0f;
+      border: 1px solid #1a1a1a;
+      border-radius: 6px;
+      padding: 20px;
+    }
+    .promote-section h2 { font-size: 13px; color: #888; margin-bottom: 14px; font-weight: 500; }
+    .form-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    select, input[type=password], button {
+      font-family: inherit;
+      font-size: 12px;
+      background: #151515;
+      color: #d8d8d8;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      padding: 7px 10px;
+      outline: none;
+    }
+    select:focus, input:focus { border-color: #444; }
+    button {
+      cursor: pointer;
+      background: #1a2a1a;
+      border-color: #2a4a2a;
+      color: #6fcc6f;
+      padding: 7px 14px;
+      transition: background 0.15s;
+    }
+    button:hover { background: #233023; }
+    button:disabled { opacity: 0.4; cursor: default; }
+    .msg { font-size: 11px; margin-top: 8px; min-height: 14px; }
+    .msg.ok  { color: #4a9a4a; }
+    .msg.err { color: #9a4a4a; }
+
+    .footer { margin-top: 32px; font-size: 11px; color: #333; }
+    .updated { font-size: 10px; color: #333; float: right; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎭 Node Network</h1>
+    <span class="nav"><a href="/">← status board</a></span>
+    <span class="updated" id="updated">—</span>
+  </div>
+
+  <div class="prime-banner" id="primeBanner">
+    <span class="label">Prime</span>
+    <span class="name" id="primeName">—</span>
+    <span class="age" id="primeAge">—</span>
+  </div>
+
+  <div class="section-title">All nodes</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Node</th>
+        <th>Role</th>
+        <th>Last seen</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="nodeTable">
+      <tr><td colspan="4" style="color:#333;padding:20px 10px;">Loading…</td></tr>
+    </tbody>
+  </table>
+
+  <div class="promote-section">
+    <h2>Change Prime — password required</h2>
+    <div class="form-row">
+      <select id="nodeSelect"><option value="">Select node…</option></select>
+      <input type="password" id="pwInput" placeholder="Password" />
+      <button id="promoteBtn" disabled>Promote to Prime</button>
+    </div>
+    <div class="msg" id="promoteMsg"></div>
+  </div>
+
+  <div class="footer">Refreshes every 10s · <a href="/heartbeat/status">raw json</a></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    let allNodes = [];
+
+    function fmtAge(s) {
+      if (s < 60)  return s + 's ago';
+      if (s < 3600) return Math.floor(s/60) + 'm ago';
+      return Math.floor(s/3600) + 'h ago';
+    }
+
+    function statusClass(age) {
+      if (age < 90)  return 'alive';
+      if (age < 300) return 'stale';
+      return 'dead';
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch('/heartbeat/status', {
+          headers: { 'x-clea-secret': 'clea-log-2026' }
+        });
+        const d = await r.json();
+        render(d);
+      } catch(e) {
+        $('nodeTable').innerHTML = '<tr><td colspan="4" style="color:#9a4a4a">Failed to fetch — is clea-status reachable?</td></tr>';
+      }
+    }
+
+    function render(d) {
+      const nodes = d.nodes || [];
+      allNodes = nodes;
+      const prime = d.prime;
+
+      // Prime banner
+      if (prime) {
+        $('primeName').textContent = prime.node;
+        $('primeAge').textContent = 'last seen ' + fmtAge(prime.ageSeconds);
+      } else {
+        $('primeName').textContent = 'none elected';
+        $('primeAge').textContent = '';
+      }
+
+      // Table
+      if (!nodes.length) {
+        $('nodeTable').innerHTML = '<tr><td colspan="4" style="color:#333">No nodes registered yet.</td></tr>';
+      } else {
+        $('nodeTable').innerHTML = nodes.map(n => {
+          const sc = statusClass(n.ageSeconds);
+          const isPrime = n.role === 'prime';
+          return `<tr class="${isPrime ? 'is-prime' : ''}">
+            <td>${n.node}</td>
+            <td><span class="badge ${n.role}">${n.role}</span></td>
+            <td>${fmtAge(n.ageSeconds)}</td>
+            <td><span class="dot ${sc}"></span>${sc}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      // Selector
+      const sel = $('nodeSelect');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Select node…</option>' +
+        nodes.map(n => `<option value="${n.node}" ${n.node===cur?'selected':''}>${n.node}</option>`).join('');
+
+      $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+    }
+
+    // Promote
+    $('nodeSelect').addEventListener('change', () => {
+      $('promoteBtn').disabled = !$('nodeSelect').value;
+    });
+
+    $('promoteBtn').addEventListener('click', async () => {
+      const node = $('nodeSelect').value;
+      const pw   = $('pwInput').value;
+      if (!node || !pw) return;
+
+      $('promoteBtn').disabled = true;
+      $('promoteMsg').textContent = '';
+      $('promoteMsg').className = 'msg';
+
+      try {
+        const r = await fetch('/heartbeat/promote', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-write-password': pw
+          },
+          body: JSON.stringify({ node, ts: Math.floor(Date.now()/1000) })
+        });
+        const d = await r.json();
+        if (d.ok) {
+          $('promoteMsg').textContent = `✓ ${node} is now Prime`;
+          $('promoteMsg').className = 'msg ok';
+          $('pwInput').value = '';
+          refresh();
+        } else {
+          $('promoteMsg').textContent = 'Error: ' + (d.error || 'unknown');
+          $('promoteMsg').className = 'msg err';
+        }
+      } catch(e) {
+        $('promoteMsg').textContent = 'Request failed';
+        $('promoteMsg').className = 'msg err';
+      }
+      $('promoteBtn').disabled = false;
+    });
+
+    refresh();
+    setInterval(refresh, 10000);
+  </script>
+</body>
+</html>
