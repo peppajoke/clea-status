@@ -511,6 +511,33 @@ app.get('/api/data', async (req, res) => {
 });
 
 // Write a log entry (internal)
+// ── Heartbeat endpoints for Clea node network ────────────────────────────────
+const nodeHeartbeats = {}; // in-memory: { nodeName: { role, ts, name } }
+
+app.post('/heartbeat/ping', requireWrite, (req, res) => {
+  const { node, role, ts } = req.body || {};
+  if (!node) return res.status(400).json({ error: 'node required' });
+  nodeHeartbeats[node] = { node, role: role || 'replica', ts: ts || Math.floor(Date.now() / 1000) };
+  res.json({ ok: true });
+});
+
+app.get('/heartbeat/status', requireWrite, (req, res) => {
+  const now = Math.floor(Date.now() / 1000);
+  const nodes = Object.values(nodeHeartbeats).map(n => ({ ...n, ageSeconds: now - n.ts }));
+  const prime = nodes.find(n => n.role === 'prime') || null;
+  res.json({ prime, nodes, now });
+});
+
+app.post('/heartbeat/promote', requireWrite, (req, res) => {
+  const { node, ts } = req.body || {};
+  if (!node) return res.status(400).json({ error: 'node required' });
+  // Demote any existing prime
+  Object.values(nodeHeartbeats).forEach(n => { if (n.role === 'prime') n.role = 'replica'; });
+  nodeHeartbeats[node] = { node, role: 'prime', ts: ts || Math.floor(Date.now() / 1000) };
+  console.log(`[heartbeat] ${node} promoted to Prime`);
+  res.json({ ok: true, prime: node });
+});
+
 app.post('/task/:id/log', requireWrite, async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
