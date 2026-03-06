@@ -530,6 +530,21 @@ app.get('/heartbeat/status', requireWrite, (req, res) => {
   res.json({ prime, nodes, now });
 });
 
+// ── Discord token gate — only returns token if requesting node is Prime ───────
+app.get('/node/discord-token', requireWrite, (req, res) => {
+  const requestingNode = req.headers['x-node-name'];
+  if (!requestingNode) return res.status(400).json({ error: 'x-node-name header required' });
+  const now = Math.floor(Date.now() / 1000);
+  const prime = Object.values(nodeHeartbeats).find(n => n.role === 'prime');
+  if (!prime) return res.status(403).json({ error: 'no prime elected' });
+  if (prime.node !== requestingNode) {
+    return res.status(403).json({ error: `not prime (current prime: ${prime.node})` });
+  }
+  const token = process.env.DISCORD_TOKEN;
+  if (!token) return res.status(503).json({ error: 'token not configured on server' });
+  res.json({ ok: true, token, prime: prime.node });
+});
+
 app.delete('/heartbeat/node/:name', requireWrite, (req, res) => {
   const { name } = req.params;
   if (!nodeHeartbeats[name]) return res.status(404).json({ error: 'node not found' });
