@@ -156,6 +156,22 @@
     <div class="msg" id="promoteMsg"></div>
   </div>
 
+  <div class="promote-section">
+    <h2>Claude — password required</h2>
+    <div style="margin-bottom:12px;font-size:11px;color:#555;">
+      Disable to switch Clea to Simon (local LLM) and hibernate Esquie. Takes effect within 60s.
+    </div>
+    <div class="form-row">
+      <input type="password" id="claudePwInput" placeholder="Password" />
+      <button id="claudeEnableBtn" onclick="setClaudeMode(true)">Enable Claude</button>
+      <button id="claudeDisableBtn" onclick="setClaudeMode(false)" style="border-color:#622;color:#c88;">Disable Claude</button>
+    </div>
+    <div class="msg" id="claudeMsg"></div>
+    <div style="margin-top:10px;font-size:11px;color:#555">
+      Current status: <span id="claudeStatus" style="color:#d8d8d8">checking…</span>
+    </div>
+  </div>
+
   <div class="footer">Refreshes every 10s · <a href="/heartbeat/status">raw json</a></div>
 
   <script>
@@ -265,8 +281,46 @@
       $('promoteBtn').disabled = false;
     });
 
+    // Claude mode
+    async function fetchClaudeMode() {
+      try {
+        const r = await fetch('/node/claude-mode', { headers: { 'x-clea-secret': 'clea-log-2026' } });
+        const d = await r.json();
+        $('claudeStatus').textContent = d.claudeEnabled ? '✅ enabled' : '🔴 disabled (Simon mode)';
+        $('claudeStatus').style.color = d.claudeEnabled ? '#4a9a4a' : '#9a4a4a';
+      } catch(e) { $('claudeStatus').textContent = 'unknown'; }
+    }
+
+    async function setClaudeMode(enabled) {
+      const pw = $('claudePwInput').value;
+      if (!pw) { $('claudeMsg').textContent = 'Password required'; $('claudeMsg').className = 'msg err'; return; }
+      $('claudeMsg').textContent = '';
+      try {
+        const r = await fetch('/node/claude-mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-write-password': pw },
+          body: JSON.stringify({ enabled })
+        });
+        const d = await r.json();
+        if (d.ok) {
+          $('claudeMsg').textContent = `✓ Claude ${enabled ? 'enabled' : 'disabled'} — nodes updating within 60s`;
+          $('claudeMsg').className = 'msg ok';
+          $('claudePwInput').value = '';
+          fetchClaudeMode();
+        } else {
+          $('claudeMsg').textContent = d.error || 'Error';
+          $('claudeMsg').className = 'msg err';
+        }
+      } catch(e) {
+        $('claudeMsg').textContent = 'Request failed';
+        $('claudeMsg').className = 'msg err';
+      }
+    }
+
     refresh();
+    fetchClaudeMode();
     setInterval(refresh, 10000);
+    setInterval(fetchClaudeMode, 10000);
   </script>
 </body>
 </html>

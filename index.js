@@ -576,6 +576,25 @@ app.get('/admin/chat/drain', requireWrite, (req, res) => {
 function queueEmail(subject, body) {
   emailQueue.push({ subject, body, ts: Date.now() });
 }
+
+// ── Claude mode toggle ────────────────────────────────────────────────────────
+let claudeEnabled = true;
+
+app.get('/node/claude-mode', requireWrite, (req, res) => {
+  res.json({ claudeEnabled });
+});
+
+app.post('/node/claude-mode', requireWrite, (req, res) => {
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) required' });
+  claudeEnabled = enabled;
+  console.log(`[claude-mode] Claude ${enabled ? 'ENABLED' : 'DISABLED'}`);
+  queueEmail(
+    `Claude ${enabled ? 'enabled ✅' : 'disabled 🔴'} on all nodes`,
+    `Claude API access has been ${enabled ? 're-enabled' : 'disabled'}.\n${enabled ? 'All nodes resuming normal operation.' : 'Clea switching to Simon. Esquie hibernating.'}`
+  );
+  res.json({ ok: true, claudeEnabled });
+});
 let chatEnabled = true;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 
