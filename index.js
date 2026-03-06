@@ -548,9 +548,23 @@ async function persistState(key, value) {
 app.post('/heartbeat/ping', requireWrite, (req, res) => {
   const { node, role, ts } = req.body || {};
   if (!node) return res.status(400).json({ error: 'node required' });
-  nodeHeartbeats[node] = { node, role: role || 'replica', ts: ts || Math.floor(Date.now() / 1000) };
+  const now = Math.floor(Date.now() / 1000);
+
+  // If this node claims prime but a different prime already exists, demote it
+  let effectiveRole = role || 'replica';
+  let demoted = false;
+  if (effectiveRole === 'prime') {
+    const existingPrime = Object.values(nodeHeartbeats).find(n => n.role === 'prime' && n.node !== node);
+    if (existingPrime) {
+      effectiveRole = 'replica';
+      demoted = true;
+      console.log(`[heartbeat] ${node} claimed prime but ${existingPrime.node} is already Prime — demoting ${node}`);
+    }
+  }
+
+  nodeHeartbeats[node] = { node, role: effectiveRole, ts: ts || now };
   persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
-  res.json({ ok: true });
+  res.json({ ok: true, role: effectiveRole, demoted });
 });
 
 app.get('/heartbeat/status', requireWrite, (req, res) => {
