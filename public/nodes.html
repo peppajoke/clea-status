@@ -19,10 +19,39 @@
     a { color: #666; text-decoration: none; }
     a:hover { color: #d8d8d8; }
 
-    .header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 32px; }
+    .header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; }
     .header h1 { font-size: 18px; font-weight: 600; color: #fff; letter-spacing: 0.04em; }
     .header .nav { font-size: 12px; color: #555; }
+    .updated { font-size: 10px; color: #333; margin-left: auto; }
 
+    /* Password bar */
+    .auth-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #0f0f0f;
+      border: 1px solid #1a1a1a;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 24px;
+    }
+    .auth-bar label { font-size: 11px; color: #555; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+    .auth-bar input {
+      font-family: inherit;
+      font-size: 12px;
+      background: #151515;
+      color: #d8d8d8;
+      border: 1px solid #2a2a2a;
+      border-radius: 4px;
+      padding: 6px 10px;
+      outline: none;
+      width: 180px;
+    }
+    .auth-bar input:focus { border-color: #444; }
+    .auth-status { font-size: 11px; color: #3a6a3a; margin-left: 4px; }
+    .auth-status.locked { color: #555; }
+
+    /* Prime banner */
     .prime-banner {
       background: #0f1a0f;
       border: 1px solid #1e3a1e;
@@ -34,114 +63,76 @@
       gap: 10px;
     }
     .prime-banner .label { font-size: 11px; color: #4a9a4a; text-transform: uppercase; letter-spacing: 0.08em; }
-    .prime-banner .name { font-size: 15px; font-weight: 600; color: #6fcc6f; }
-    .prime-banner .age { font-size: 11px; color: #3a6a3a; margin-left: auto; }
+    .prime-banner .name  { font-size: 15px; font-weight: 600; color: #6fcc6f; }
+    .prime-banner .age   { font-size: 11px; color: #3a6a3a; margin-left: auto; }
 
     .section-title {
-      font-size: 11px;
-      color: #555;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      margin-bottom: 10px;
+      font-size: 11px; color: #555; text-transform: uppercase;
+      letter-spacing: 0.1em; margin-bottom: 10px;
     }
 
     table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
     th {
-      text-align: left;
-      font-size: 10px;
-      color: #444;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      padding: 0 10px 8px 10px;
-      border-bottom: 1px solid #1a1a1a;
+      text-align: left; font-size: 10px; color: #444;
+      text-transform: uppercase; letter-spacing: 0.1em;
+      padding: 0 10px 8px 10px; border-bottom: 1px solid #1a1a1a;
     }
     td { padding: 10px; border-bottom: 1px solid #111; vertical-align: middle; }
     tr:hover td { background: #0f0f0f; }
     tr.is-prime td { background: #0a140a; }
+    tr.is-hidden td { opacity: 0.4; }
 
     .badge {
-      display: inline-block;
-      padding: 2px 7px;
-      border-radius: 3px;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      display: inline-block; padding: 2px 7px; border-radius: 3px;
+      font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
     }
     .badge.prime   { background: #1a3a1a; color: #6fcc6f; }
     .badge.replica { background: #1a1a1a; color: #555; }
-    .badge.hidden  { background: #1a1a2a; color: #556; }
-    .btn-hide {
-      font-family: inherit;
-      font-size: 10px;
-      padding: 3px 8px;
-      border-radius: 3px;
-      cursor: pointer;
-      border: 1px solid #2a2a3a;
-      background: #111;
-      color: #556;
-      transition: all 0.15s;
-    }
-    .btn-hide:hover { background: #1a1a2e; color: #88f; border-color: #334; }
-    .btn-unhide {
-      font-family: inherit;
-      font-size: 10px;
-      padding: 3px 8px;
-      border-radius: 3px;
-      cursor: pointer;
-      border: 1px solid #2a3a2a;
-      background: #111;
-      color: #4a7a4a;
-      transition: all 0.15s;
-    }
-    .btn-unhide:hover { background: #0f1a0f; color: #6fcc6f; border-color: #2a5a2a; }
-    tr.is-hidden td { opacity: 0.45; }
+    .badge.paused  { background: #1a1a2a; color: #556; }
+
     .dot {
-      display: inline-block;
-      width: 7px; height: 7px;
-      border-radius: 50%;
-      margin-right: 6px;
-      vertical-align: middle;
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; margin-right: 6px; vertical-align: middle;
     }
     .dot.alive { background: #4a9a4a; box-shadow: 0 0 4px #4a9a4a; }
     .dot.stale { background: #9a4a4a; box-shadow: 0 0 4px #9a4a4a; }
     .dot.dead  { background: #3a3a3a; }
 
-    .promote-section {
-      background: #0f0f0f;
-      border: 1px solid #1a1a1a;
-      border-radius: 6px;
-      padding: 20px;
+    /* Action buttons */
+    .action-btn {
+      font-family: inherit; font-size: 10px; padding: 3px 9px;
+      border-radius: 3px; cursor: pointer; border: 1px solid #2a2a2a;
+      background: #111; color: #555; transition: all 0.15s;
+      margin-right: 4px;
     }
-    .promote-section h2 { font-size: 13px; color: #888; margin-bottom: 14px; font-weight: 500; }
-    .form-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    select, input[type=password], button {
-      font-family: inherit;
-      font-size: 12px;
-      background: #151515;
-      color: #d8d8d8;
-      border: 1px solid #2a2a2a;
-      border-radius: 4px;
-      padding: 7px 10px;
-      outline: none;
+    .action-btn:disabled { opacity: 0.25; cursor: default; pointer-events: none; }
+    .action-btn.promote:not(:disabled):hover { background: #1a2a1a; color: #6fcc6f; border-color: #2a4a2a; }
+    .action-btn.pause:not(:disabled):hover   { background: #1a1a2e; color: #88aaff; border-color: #334; }
+    .action-btn.resume:not(:disabled):hover  { background: #0f1a0f; color: #6fcc6f; border-color: #2a5a2a; }
+    .action-btn:not(:disabled) { color: #888; }
+
+    /* Panels */
+    .panel {
+      background: #0f0f0f; border: 1px solid #1a1a1a;
+      border-radius: 6px; padding: 20px; margin-bottom: 20px;
     }
-    select:focus, input:focus { border-color: #444; }
-    button {
-      cursor: pointer;
-      background: #1a2a1a;
-      border-color: #2a4a2a;
-      color: #6fcc6f;
-      padding: 7px 14px;
-      transition: background 0.15s;
+    .panel h2 { font-size: 13px; color: #888; margin-bottom: 6px; font-weight: 500; }
+    .panel .desc { font-size: 11px; color: #444; margin-bottom: 14px; }
+    .panel-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .panel-btn {
+      font-family: inherit; font-size: 12px; background: #1a2a1a;
+      color: #6fcc6f; border: 1px solid #2a4a2a; border-radius: 4px;
+      padding: 7px 14px; cursor: pointer; transition: background 0.15s;
     }
-    button:hover { background: #233023; }
-    button:disabled { opacity: 0.4; cursor: default; }
+    .panel-btn:hover { background: #233023; }
+    .panel-btn:disabled { opacity: 0.35; cursor: default; }
+    .panel-btn.danger { background: #1a0f0f; color: #c88; border-color: #622; }
+    .panel-btn.danger:hover { background: #2a1515; }
     .msg { font-size: 11px; margin-top: 8px; min-height: 14px; }
     .msg.ok  { color: #4a9a4a; }
     .msg.err { color: #9a4a4a; }
 
     .footer { margin-top: 32px; font-size: 11px; color: #333; }
-    .updated { font-size: 10px; color: #333; float: right; }
   </style>
 </head>
 <body>
@@ -149,6 +140,13 @@
     <h1>🎭 Node Network</h1>
     <span class="nav"><a href="/">← status board</a></span>
     <span class="updated" id="updated">—</span>
+  </div>
+
+  <!-- Single password bar -->
+  <div class="auth-bar">
+    <label>Password</label>
+    <input type="password" id="globalPw" placeholder="enter to unlock actions" oninput="onPwInput()" />
+    <span class="auth-status locked" id="authStatus">🔒 locked</span>
   </div>
 
   <div class="prime-banner" id="primeBanner">
@@ -165,37 +163,38 @@
         <th>Role</th>
         <th>Last seen</th>
         <th>Status</th>
-        <th></th>
+        <th>Actions</th>
       </tr>
     </thead>
     <tbody id="nodeTable">
-      <tr><td colspan="4" style="color:#333;padding:20px 10px;">Loading…</td></tr>
+      <tr><td colspan="5" style="color:#333;padding:20px 10px;">Loading…</td></tr>
     </tbody>
   </table>
 
-  <div class="promote-section">
-    <h2>Change Prime — password required</h2>
-    <div class="form-row">
-      <select id="nodeSelect"><option value="">Select node…</option></select>
-      <input type="password" id="pwInput" placeholder="Password" />
-      <button id="promoteBtn" disabled>Promote to Prime</button>
+  <!-- Promote panel -->
+  <div class="panel">
+    <h2>Promote to Prime</h2>
+    <div class="desc">Force a node to become Prime immediately.</div>
+    <div class="panel-row">
+      <select id="nodeSelect" style="font-family:inherit;font-size:12px;background:#151515;color:#d8d8d8;border:1px solid #2a2a2a;border-radius:4px;padding:7px 10px;outline:none;">
+        <option value="">Select node…</option>
+      </select>
+      <button class="panel-btn" id="promoteBtn" disabled onclick="doPromote()">Promote</button>
     </div>
     <div class="msg" id="promoteMsg"></div>
   </div>
 
-  <div class="promote-section">
-    <h2>Claude — password required</h2>
-    <div style="margin-bottom:12px;font-size:11px;color:#555;">
-      Disable to switch Clea to Simon (local LLM) and hibernate Esquie. Takes effect within 60s.
-    </div>
-    <div class="form-row">
-      <input type="password" id="claudePwInput" placeholder="Password" />
-      <button id="claudeEnableBtn" onclick="setClaudeMode(true)">Enable Claude</button>
-      <button id="claudeDisableBtn" onclick="setClaudeMode(false)" style="border-color:#622;color:#c88;">Disable Claude</button>
+  <!-- Claude panel -->
+  <div class="panel">
+    <h2>Claude Mode</h2>
+    <div class="desc">Disable to switch Clea to Simon (local LLM) and hibernate Esquie. Takes effect within 60s.</div>
+    <div class="panel-row">
+      <button class="panel-btn" id="claudeEnableBtn" disabled onclick="setClaudeMode(true)">Enable Claude</button>
+      <button class="panel-btn danger" id="claudeDisableBtn" disabled onclick="setClaudeMode(false)">Disable Claude</button>
     </div>
     <div class="msg" id="claudeMsg"></div>
     <div style="margin-top:10px;font-size:11px;color:#555">
-      Current status: <span id="claudeStatus" style="color:#d8d8d8">checking…</span>
+      Status: <span id="claudeStatus" style="color:#d8d8d8">checking…</span>
     </div>
   </div>
 
@@ -204,9 +203,31 @@
   <script>
     const $ = id => document.getElementById(id);
     let allNodes = [];
+    let unlocked = false;
+
+    function pw() { return $('globalPw').value; }
+
+    function onPwInput() {
+      // Optimistically unlock UI when password has been typed — server will reject if wrong
+      unlocked = pw().length > 0;
+      $('authStatus').textContent = unlocked ? '🔓 unlocked' : '🔒 locked';
+      $('authStatus').className = 'auth-status' + (unlocked ? '' : ' locked');
+      updateButtonStates();
+    }
+
+    function updateButtonStates() {
+      // Promote panel
+      $('promoteBtn').disabled = !unlocked || !$('nodeSelect').value;
+      $('claudeEnableBtn').disabled = !unlocked;
+      $('claudeDisableBtn').disabled = !unlocked;
+      // Per-row buttons
+      document.querySelectorAll('.action-btn').forEach(btn => {
+        btn.disabled = !unlocked;
+      });
+    }
 
     function fmtAge(s) {
-      if (s < 60)  return s + 's ago';
+      if (s < 60)   return s + 's ago';
       if (s < 3600) return Math.floor(s/60) + 'm ago';
       return Math.floor(s/3600) + 'h ago';
     }
@@ -219,48 +240,43 @@
 
     async function refresh() {
       try {
-        const r = await fetch('/heartbeat/status', {
-          headers: { 'x-clea-secret': 'clea-log-2026' }
-        });
+        const r = await fetch('/heartbeat/status', { headers: { 'x-clea-secret': 'clea-log-2026' } });
         const d = await r.json();
         render(d);
       } catch(e) {
-        $('nodeTable').innerHTML = '<tr><td colspan="4" style="color:#9a4a4a">Failed to fetch — is clea-status reachable?</td></tr>';
+        $('nodeTable').innerHTML = '<tr><td colspan="5" style="color:#9a4a4a">Failed to fetch</td></tr>';
       }
     }
 
     function render(d) {
-      const nodes = d.nodes || [];
-      allNodes = nodes;
+      allNodes = d.nodes || [];
       const prime = d.prime;
 
-      // Prime banner
-      if (prime) {
-        $('primeName').textContent = prime.node;
-        $('primeAge').textContent = 'last seen ' + fmtAge(prime.ageSeconds);
-      } else {
-        $('primeName').textContent = 'none elected';
-        $('primeAge').textContent = '';
-      }
+      $('primeName').textContent = prime ? prime.node : 'none elected';
+      $('primeAge').textContent  = prime ? 'last seen ' + fmtAge(prime.ageSeconds) : '';
 
-      // Table
-      if (!nodes.length) {
+      if (!allNodes.length) {
         $('nodeTable').innerHTML = '<tr><td colspan="5" style="color:#333">No nodes registered yet.</td></tr>';
       } else {
-        $('nodeTable').innerHTML = nodes.map(n => {
-          const sc = n.hidden ? 'dead' : statusClass(n.ageSeconds);
-          const isPrime = n.role === 'prime' && !n.hidden;
-          const rowClass = n.hidden ? 'is-hidden' : (isPrime ? 'is-prime' : '');
-          const roleLabel = n.hidden ? 'hidden' : n.role;
-          const btn = n.hidden
-            ? `<button class="btn-unhide" onclick="toggleHide('${n.node}', false)">unhide</button>`
-            : `<button class="btn-hide" onclick="toggleHide('${n.node}', true)">hide</button>`;
+        $('nodeTable').innerHTML = allNodes.map(n => {
+          const paused  = n.hidden;
+          const isPrime = n.role === 'prime' && !paused;
+          const sc      = paused ? 'dead' : statusClass(n.ageSeconds);
+          const rowClass = paused ? 'is-hidden' : (isPrime ? 'is-prime' : '');
+          const roleLabel = paused ? 'paused' : n.role;
+
+          const pauseBtn  = `<button class="action-btn pause"  ${unlocked ? '' : 'disabled'} onclick="doHide('${n.node}', true)">pause</button>`;
+          const resumeBtn = `<button class="action-btn resume" ${unlocked ? '' : 'disabled'} onclick="doHide('${n.node}', false)">resume</button>`;
+          const promoteRowBtn = !paused && !isPrime
+            ? `<button class="action-btn promote" ${unlocked ? '' : 'disabled'} onclick="doPromoteNode('${n.node}')">make prime</button>`
+            : '';
+
           return `<tr class="${rowClass}">
             <td>${n.node}</td>
             <td><span class="badge ${roleLabel}">${roleLabel}</span></td>
             <td>${fmtAge(n.ageSeconds)}</td>
-            <td><span class="dot ${sc}"></span>${n.hidden ? 'hidden' : sc}</td>
-            <td>${btn}</td>
+            <td><span class="dot ${sc}"></span>${paused ? 'paused' : sc}</td>
+            <td>${paused ? resumeBtn : pauseBtn}${promoteRowBtn}</td>
           </tr>`;
         }).join('');
       }
@@ -269,50 +285,49 @@
       const sel = $('nodeSelect');
       const cur = sel.value;
       sel.innerHTML = '<option value="">Select node…</option>' +
-        nodes.map(n => `<option value="${n.node}" ${n.node===cur?'selected':''}>${n.node}</option>`).join('');
+        allNodes.map(n => `<option value="${n.node}" ${n.node===cur?'selected':''}>${n.node}</option>`).join('');
 
       $('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+      updateButtonStates();
     }
 
-    // Promote
+    // Promote (panel)
     $('nodeSelect').addEventListener('change', () => {
-      $('promoteBtn').disabled = !$('nodeSelect').value;
+      $('promoteBtn').disabled = !unlocked || !$('nodeSelect').value;
     });
 
-    $('promoteBtn').addEventListener('click', async () => {
-      const node = $('nodeSelect').value;
-      const pw   = $('pwInput').value;
-      if (!node || !pw) return;
+    async function doPromote() {
+      await doPromoteNode($('nodeSelect').value);
+    }
 
-      $('promoteBtn').disabled = true;
-      $('promoteMsg').textContent = '';
-      $('promoteMsg').className = 'msg';
-
+    async function doPromoteNode(node) {
+      if (!node || !pw()) return;
+      setMsg('promoteMsg', '', '');
       try {
         const r = await fetch('/heartbeat/promote', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-write-password': pw
-          },
+          headers: { 'Content-Type': 'application/json', 'x-write-password': pw() },
           body: JSON.stringify({ node, ts: Math.floor(Date.now()/1000) })
         });
         const d = await r.json();
-        if (d.ok) {
-          $('promoteMsg').textContent = `✓ ${node} is now Prime`;
-          $('promoteMsg').className = 'msg ok';
-          $('pwInput').value = '';
-          refresh();
-        } else {
-          $('promoteMsg').textContent = 'Error: ' + (d.error || 'unknown');
-          $('promoteMsg').className = 'msg err';
-        }
-      } catch(e) {
-        $('promoteMsg').textContent = 'Request failed';
-        $('promoteMsg').className = 'msg err';
-      }
-      $('promoteBtn').disabled = false;
-    });
+        if (d.ok) { setMsg('promoteMsg', `✓ ${node} is now Prime`, 'ok'); refresh(); }
+        else       { setMsg('promoteMsg', 'Error: ' + (d.error || 'unknown'), 'err'); }
+      } catch(e) { setMsg('promoteMsg', 'Request failed', 'err'); }
+    }
+
+    // Pause / Resume
+    async function doHide(node, hide) {
+      if (!pw()) return;
+      try {
+        const r = await fetch(`/heartbeat/node/${node}/${hide ? 'hide' : 'unhide'}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-write-password': pw() }
+        });
+        const d = await r.json();
+        if (d.ok) { refresh(); }
+        else { alert('Error: ' + (d.error || 'unknown')); }
+      } catch(e) { alert('Request failed'); }
+    }
 
     // Claude mode
     async function fetchClaudeMode() {
@@ -325,44 +340,25 @@
     }
 
     async function setClaudeMode(enabled) {
-      const pw = $('claudePwInput').value;
-      if (!pw) { $('claudeMsg').textContent = 'Password required'; $('claudeMsg').className = 'msg err'; return; }
-      $('claudeMsg').textContent = '';
+      if (!pw()) return;
+      setMsg('claudeMsg', '', '');
       try {
         const r = await fetch('/node/claude-mode', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-write-password': pw },
+          headers: { 'Content-Type': 'application/json', 'x-write-password': pw() },
           body: JSON.stringify({ enabled })
         });
         const d = await r.json();
         if (d.ok) {
-          $('claudeMsg').textContent = `✓ Claude ${enabled ? 'enabled' : 'disabled'} — nodes updating within 60s`;
-          $('claudeMsg').className = 'msg ok';
-          $('claudePwInput').value = '';
+          setMsg('claudeMsg', `✓ Claude ${enabled ? 'enabled' : 'disabled'} — nodes updating within 60s`, 'ok');
           fetchClaudeMode();
-        } else {
-          $('claudeMsg').textContent = d.error || 'Error';
-          $('claudeMsg').className = 'msg err';
-        }
-      } catch(e) {
-        $('claudeMsg').textContent = 'Request failed';
-        $('claudeMsg').className = 'msg err';
-      }
+        } else { setMsg('claudeMsg', d.error || 'Error', 'err'); }
+      } catch(e) { setMsg('claudeMsg', 'Request failed', 'err'); }
     }
 
-    // Hide / Unhide
-    async function toggleHide(node, hide) {
-      const pw = prompt(`Password to ${hide ? 'hide' : 'unhide'} ${node}:`);
-      if (!pw) return;
-      try {
-        const r = await fetch(`/heartbeat/node/${node}/${hide ? 'hide' : 'unhide'}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-write-password': pw }
-        });
-        const d = await r.json();
-        if (d.ok) { refresh(); }
-        else { alert('Error: ' + (d.error || 'unknown')); }
-      } catch(e) { alert('Request failed'); }
+    function setMsg(id, text, cls) {
+      $(id).textContent = text;
+      $(id).className = 'msg' + (cls ? ' ' + cls : '');
     }
 
     refresh();
