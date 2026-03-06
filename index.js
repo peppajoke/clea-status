@@ -565,6 +565,17 @@ app.post('/heartbeat/promote', requireWrite, (req, res) => {
 // ── Public chat ───────────────────────────────────────────────────────────────
 const chatSessions = {}; // sessionId → { history, notified, strikes }
 const bannedSessions = new Set();
+const emailQueue = []; // pending email notifications for Mac mini to drain
+
+// Drain endpoint — Mac mini polls this, sends emails via GOG, clears queue
+app.get('/admin/chat/drain', requireWrite, (req, res) => {
+  const pending = emailQueue.splice(0, emailQueue.length);
+  res.json({ ok: true, pending });
+});
+
+function queueEmail(subject, body) {
+  emailQueue.push({ subject, body, ts: Date.now() });
+}
 let chatEnabled = true;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
 
@@ -595,14 +606,14 @@ app.post('/admin/chat/kill', requireWrite, (req, res) => {
   chatEnabled = false;
   const reason = req.body?.reason || 'manual killswitch';
   console.log(`[public-chat] KILLSWITCH engaged: ${reason}`);
-  tgSend(`🔴 Public chat DISABLED — ${reason}`).catch(() => {});
+  queueEmail('🔴 Public chat DISABLED', `Reason: ${reason}`);
   res.json({ ok: true, chatEnabled });
 });
 
 app.post('/admin/chat/restore', requireWrite, (req, res) => {
   chatEnabled = true;
   console.log('[public-chat] chat restored');
-  tgSend('🟢 Public chat re-enabled').catch(() => {});
+  queueEmail('🟢 Public chat re-enabled', 'Chat has been restored.');
   res.json({ ok: true, chatEnabled });
 });
 
@@ -671,7 +682,10 @@ app.post('/public/chat', async (req, res) => {
   const isNew = !chatSessions[sessionId];
   if (isNew) {
     chatSessions[sessionId] = { history: [], notified: false, strikes: 0, ts: Date.now() };
-    tgSend(`👤 New visitor on chat.html — session <code>${sessionId.slice(0,8)}</code>\nFirst message: "${message.slice(0,120)}"`).catch(() => {});
+    queueEmail(
+      `New visitor on chat.html`,
+      `Session: ${sessionId.slice(0,8)}\nFirst message: "${message.slice(0,200)}"\nTime: ${new Date().toISOString()}`
+    );
   }
 
   const session = chatSessions[sessionId];
@@ -685,19 +699,25 @@ app.post('/public/chat', async (req, res) => {
     if (session.strikes >= 2) {
       // Ban the session
       bannedSessions.add(sessionId);
-      tgSend(`🚨 Session <code>${sessionId.slice(0,8)}</code> BANNED after ${session.strikes} strikes.\nLast message: "${message.slice(0,120)}"\nFlags: ${flags.map(f=>f.source).join(', ')}`).catch(() => {});
+      queueEmail(
+        `🚨 Chat session BANNED`,
+        `Session: ${sessionId.slice(0,8)}\nStrikes: ${session.strikes}\nLast message: "${message.slice(0,200)}"\nFlags: ${flags.map(f=>f.source).join(', ')}`
+      );
 
       // Auto-killswitch if 3+ sessions banned in this process lifetime
       if (bannedSessions.size >= 3) {
         chatEnabled = false;
-        tgSend('🔴 KILLSWITCH auto-engaged — 3+ sessions banned. Use /admin/chat/restore to re-enable.').catch(() => {});
+        queueEmail('🔴 Chat KILLSWITCH engaged', '3+ sessions banned. Public chat disabled. Reply to re-enable.');
         return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
       }
 
       return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
     } else {
       // First strike — warn Jack, continue but note it
-      tgSend(`⚠️ Suspicious message from session <code>${sessionId.slice(0,8)}</code> (strike ${session.strikes}):\n"${message.slice(0,120)}"`).catch(() => {});
+      queueEmail(
+        `⚠️ Suspicious chat message (strike ${session.strikes})`,
+        `Session: ${sessionId.slice(0,8)}\nMessage: "${message.slice(0,200)}"\nFlags: ${flags.map(f=>f.source).join(', ')}`
+      );
     }
   }
 
