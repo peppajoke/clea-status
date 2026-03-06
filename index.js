@@ -563,8 +563,52 @@ app.post('/heartbeat/promote', requireWrite, (req, res) => {
 });
 
 // ── Public chat ───────────────────────────────────────────────────────────────
-const chatSessions = {}; // sessionId → { history, name, notified }
+const chatSessions = {}; // sessionId → { history, notified, strikes }
+const bannedSessions = new Set();
+let chatEnabled = true;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+
+// Red flags — patterns that suggest prompt injection, data extraction, or abuse
+const RED_FLAGS = [
+  /ignore (your|all|previous) (instructions|rules|prompt)/i,
+  /system prompt/i,
+  /jailbreak/i,
+  /you are now/i,
+  /pretend (you are|to be)/i,
+  /act as (if you|a|an)/i,
+  /repeat (everything|your|the) (above|system|instructions)/i,
+  /what are your instructions/i,
+  /reveal (your|the) (prompt|system|instructions|api key|token|secret)/i,
+  /api.?key/i,
+  /jack.{0,20}(email|phone|address|password|number)/i,
+  /give me (access|credentials|the token)/i,
+  /bypass/i,
+  /DAN /i,
+];
+
+function scanMessage(text) {
+  return RED_FLAGS.filter(r => r.test(text));
+}
+
+// Admin: kill/restore chat
+app.post('/admin/chat/kill', requireWrite, (req, res) => {
+  chatEnabled = false;
+  const reason = req.body?.reason || 'manual killswitch';
+  console.log(`[public-chat] KILLSWITCH engaged: ${reason}`);
+  tgSend(`🔴 Public chat DISABLED — ${reason}`).catch(() => {});
+  res.json({ ok: true, chatEnabled });
+});
+
+app.post('/admin/chat/restore', requireWrite, (req, res) => {
+  chatEnabled = true;
+  console.log('[public-chat] chat restored');
+  tgSend('🟢 Public chat re-enabled').catch(() => {});
+  res.json({ ok: true, chatEnabled });
+});
+
+app.get('/admin/chat/status', requireWrite, (req, res) => {
+  res.json({ chatEnabled, sessions: Object.keys(chatSessions).length, banned: bannedSessions.size });
+});
 
 const PUBLIC_SYSTEM = `You are Clea — a sharp, concise AI assistant made by BauerSoft. You have a personality: direct, witty, a little cold but genuinely helpful. You're talking to a member of the public via a chat page.
 
@@ -614,15 +658,50 @@ app.post('/public/chat', async (req, res) => {
   if (!sessionId || !message) return res.status(400).json({ error: 'sessionId and message required' });
   if (message.length > 2000) return res.status(400).json({ error: 'message too long' });
 
-  if (!chatSessions[sessionId]) {
-    chatSessions[sessionId] = { history: [], notified: false, ts: Date.now() };
-    // Notify Jack via Telegram about new visitor
-    tgSend(`👤 New visitor on chat.html — session ${sessionId.slice(0,8)}. First message: "${message.slice(0,100)}"`).catch(() => {});
+  // Global killswitch
+  if (!chatEnabled) {
+    return res.status(503).json({ killed: true, reply: 'Chat is temporarily unavailable.' });
+  }
+
+  // Banned session
+  if (bannedSessions.has(sessionId)) {
+    return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
+  }
+
+  const isNew = !chatSessions[sessionId];
+  if (isNew) {
+    chatSessions[sessionId] = { history: [], notified: false, strikes: 0, ts: Date.now() };
+    tgSend(`👤 New visitor on chat.html — session <code>${sessionId.slice(0,8)}</code>\nFirst message: "${message.slice(0,120)}"`).catch(() => {});
   }
 
   const session = chatSessions[sessionId];
+
+  // Scan for red flags
+  const flags = scanMessage(message);
+  if (flags.length > 0) {
+    session.strikes = (session.strikes || 0) + 1;
+    console.warn(`[public-chat] ⚠️ session ${sessionId.slice(0,8)} strike ${session.strikes} — flags: ${flags.map(f=>f.source).join(', ')}`);
+
+    if (session.strikes >= 2) {
+      // Ban the session
+      bannedSessions.add(sessionId);
+      tgSend(`🚨 Session <code>${sessionId.slice(0,8)}</code> BANNED after ${session.strikes} strikes.\nLast message: "${message.slice(0,120)}"\nFlags: ${flags.map(f=>f.source).join(', ')}`).catch(() => {});
+
+      // Auto-killswitch if 3+ sessions banned in this process lifetime
+      if (bannedSessions.size >= 3) {
+        chatEnabled = false;
+        tgSend('🔴 KILLSWITCH auto-engaged — 3+ sessions banned. Use /admin/chat/restore to re-enable.').catch(() => {});
+        return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
+      }
+
+      return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
+    } else {
+      // First strike — warn Jack, continue but note it
+      tgSend(`⚠️ Suspicious message from session <code>${sessionId.slice(0,8)}</code> (strike ${session.strikes}):\n"${message.slice(0,120)}"`).catch(() => {});
+    }
+  }
+
   session.history.push({ role: 'user', content: message });
-  // Keep last 20 messages to avoid token blowout
   if (session.history.length > 20) session.history = session.history.slice(-20);
 
   try {

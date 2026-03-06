@@ -284,6 +284,18 @@
       });
       const data = await resp.json();
       typingEl.remove();
+      if (data.killed) {
+        addMessage('assistant', 'Chat is temporarily unavailable. Check back later.');
+        document.getElementById('user-input').disabled = true;
+        document.getElementById('send-btn').disabled = true;
+        return;
+      }
+      if (data.banned) {
+        addMessage('assistant', 'This session has been suspended.');
+        document.getElementById('user-input').disabled = true;
+        document.getElementById('send-btn').disabled = true;
+        return;
+      }
       addMessage('assistant', data.reply || 'Something went wrong.');
     } catch (e) {
       typingEl.remove();
