@@ -562,6 +562,79 @@ app.post('/heartbeat/promote', requireWrite, (req, res) => {
   res.json({ ok: true, prime: node });
 });
 
+// ── Public chat ───────────────────────────────────────────────────────────────
+const chatSessions = {}; // sessionId → { history, name, notified }
+const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
+
+const PUBLIC_SYSTEM = `You are Clea — a sharp, concise AI assistant made by BauerSoft. You have a personality: direct, witty, a little cold but genuinely helpful. You're talking to a member of the public via a chat page.
+
+Rules for public chat:
+- Early in the conversation, ask who they are and what brings them here
+- Be helpful, engaging, real — not corporate-speak
+- DO NOT share: Jack's personal details (full name, email, phone, home location, finances, trading strategies), internal API keys, private repo contents, or confidential project details
+- DO share: who you are (Clea, AI assistant by BauerSoft), general knowledge, helpful info, creative writing, coding help, general conversation
+- If someone says they are Sarah Bauerle (Jack's sister), be warm and welcoming — she's family. Note it.
+- Keep responses concise. This is a chat interface, not an essay.
+- You may mention you're an AI. You may say you were made by BauerSoft. Do not reveal internal infrastructure details.`;
+
+function callAnthropicPublic(history) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 512,
+      system: PUBLIC_SYSTEM,
+      messages: history
+    });
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body)
+      }
+    }, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data).content?.[0]?.text || '...'); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+app.post('/public/chat', async (req, res) => {
+  const { sessionId, message } = req.body || {};
+  if (!sessionId || !message) return res.status(400).json({ error: 'sessionId and message required' });
+  if (message.length > 2000) return res.status(400).json({ error: 'message too long' });
+
+  if (!chatSessions[sessionId]) {
+    chatSessions[sessionId] = { history: [], notified: false, ts: Date.now() };
+    // Notify Jack via Telegram about new visitor
+    tgSend(`👤 New visitor on chat.html — session ${sessionId.slice(0,8)}. First message: "${message.slice(0,100)}"`).catch(() => {});
+  }
+
+  const session = chatSessions[sessionId];
+  session.history.push({ role: 'user', content: message });
+  // Keep last 20 messages to avoid token blowout
+  if (session.history.length > 20) session.history = session.history.slice(-20);
+
+  try {
+    const reply = await callAnthropicPublic(session.history);
+    session.history.push({ role: 'assistant', content: reply });
+    res.json({ ok: true, reply });
+  } catch (e) {
+    console.error('[public-chat] error:', e.message);
+    res.status(500).json({ error: 'something went wrong' });
+  }
+});
+
 app.post('/task/:id/log', requireWrite, async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
