@@ -530,6 +530,13 @@ app.get('/heartbeat/status', requireWrite, (req, res) => {
   res.json({ prime, nodes, now });
 });
 
+app.delete('/heartbeat/node/:name', requireWrite, (req, res) => {
+  const { name } = req.params;
+  if (!nodeHeartbeats[name]) return res.status(404).json({ error: 'node not found' });
+  delete nodeHeartbeats[name];
+  res.json({ ok: true, deleted: name });
+});
+
 app.post('/heartbeat/promote', requireWrite, (req, res) => {
   const { node, ts } = req.body || {};
   if (!node) return res.status(400).json({ error: 'node required' });
