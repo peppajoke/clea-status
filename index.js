@@ -117,12 +117,18 @@ async function setup() {
       status     TEXT,
       meta       TEXT,
       priority   BOOLEAN DEFAULT FALSE,
+      assigned_to TEXT,
+      assigned_at TIMESTAMPTZ,
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
 
   // Add priority column if upgrading from older schema
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority BOOLEAN DEFAULT FALSE`);
+  
+  // Add task assignment tracking (for queue worker architecture)
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_to TEXT`);
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS task_logs (
@@ -141,6 +147,18 @@ async function setup() {
       id         SERIAL PRIMARY KEY,
       text       TEXT NOT NULL,
       done       BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  // Email queue (for task completion/failure notifications)
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_queue (
+      id         SERIAL PRIMARY KEY,
+      to_addr    TEXT NOT NULL,
+      subject    TEXT NOT NULL,
+      body       TEXT NOT NULL,
+      sent       BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
@@ -745,6 +763,103 @@ app.patch('/api/queue/:id', requireWrite, async (req, res) => {
 
 app.delete('/api/queue/:id', requireWrite, async (req, res) => {
   await pool.query(`DELETE FROM todos WHERE id=$1`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+// ── Task worker system (claim, complete, fail) ────────────────────────────────
+app.post('/api/task/claim', requireWrite, async (req, res) => {
+  const { agent_id } = req.body || {};
+  if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
+
+  // Atomic transaction: claim next todo (orphans first, then priority)
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Orphaned tasks first (assigned_to is set but agent is dead)
+    const orphaned = await client.query(
+      `SELECT id FROM tasks WHERE col='todo' AND assigned_to IS NOT NULL 
+       ORDER BY priority DESC LIMIT 1 FOR UPDATE`
+    );
+    let task;
+    if (orphaned.rows.length) {
+      task = orphaned.rows[0];
+    } else {
+      // Otherwise grab next unclaimed todo
+      const unclaimed = await client.query(
+        `SELECT id FROM tasks WHERE col='todo' AND assigned_to IS NULL 
+         ORDER BY priority DESC LIMIT 1 FOR UPDATE`
+      );
+      task = unclaimed.rows.length ? unclaimed.rows[0] : null;
+    }
+
+    if (!task) {
+      await client.query('COMMIT');
+      return res.json({ task: null, reason: 'no todos available' });
+    }
+
+    // Claim it
+    await client.query(
+      `UPDATE tasks SET assigned_to=$1, assigned_at=NOW(), col=$2 WHERE id=$3`,
+      [agent_id, 'active', task.id]
+    );
+    await client.query('COMMIT');
+
+    // Return full task
+    const full = await pool.query('SELECT * FROM tasks WHERE id=$1', [task.id]);
+    res.json({ task: full.rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/task/:id/complete', requireWrite, async (req, res) => {
+  const { agent_id } = req.body || {};
+  if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
+
+  await pool.query(
+    `UPDATE tasks SET col=$1, assigned_to=NULL WHERE id=$2`,
+    ['done', req.params.id]
+  );
+
+  // Email Jack (queued for email cron)
+  const task = await pool.query('SELECT * FROM tasks WHERE id=$1', [req.params.id]);
+  if (task.rows.length) {
+    const t = task.rows[0];
+    const subject = `✅ Task completed: ${t.text}`;
+    const body = `Agent ${agent_id} finished: ${t.text}\n\nTask ID: ${t.id}\nTag: ${t.tag}`;
+    await pool.query(
+      `INSERT INTO email_queue (to_addr, subject, body) VALUES ($1, $2, $3)`,
+      ['jackcbauerle@gmail.com', subject, body]
+    );
+  }
+
+  res.json({ ok: true });
+});
+
+app.post('/api/task/:id/fail', requireWrite, async (req, res) => {
+  const { agent_id, reason } = req.body || {};
+  if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
+
+  await pool.query(
+    `UPDATE tasks SET col=$1, status=$2, assigned_to=NULL, meta=$3 WHERE id=$4`,
+    ['blocked', 'failed', reason || 'Worker agent failed', req.params.id]
+  );
+
+  // Email Jack
+  const task = await pool.query('SELECT * FROM tasks WHERE id=$1', [req.params.id]);
+  if (task.rows.length) {
+    const t = task.rows[0];
+    const subject = `❌ Task failed: ${t.text}`;
+    const body = `Agent ${agent_id} failed on: ${t.text}\n\nReason: ${reason || '(no details)'}\n\nTask ID: ${t.id}`;
+    await pool.query(
+      `INSERT INTO email_queue (to_addr, subject, body) VALUES ($1, $2, $3)`,
+      ['jackcbauerle@gmail.com', subject, body]
+    );
+  }
+
   res.json({ ok: true });
 });
 
