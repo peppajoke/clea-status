@@ -148,6 +148,10 @@ async function setup() {
   const { rows: cmRows } = await pool.query(`SELECT value FROM node_state WHERE key='claudeEnabled'`);
   if (cmRows.length) claudeEnabled = cmRows[0].value === 'true';
 
+  // Load persisted preferred model
+  const { rows: pmRows } = await pool.query(`SELECT value FROM node_state WHERE key='preferredModel'`);
+  if (pmRows.length) preferredModel = pmRows[0].value;
+
   // Load persisted heartbeats
   const { rows: hbRows } = await pool.query(`SELECT value FROM node_state WHERE key='nodeHeartbeats'`);
   if (hbRows.length) {
@@ -541,7 +545,8 @@ app.get('/api/data', async (req, res) => {
 // ── Heartbeat endpoints for Clea node network ────────────────────────────────
 const nodeHeartbeats = {}; // { nodeName: { role, ts } } — persisted to postgres
 const hiddenNodes = new Set(); // nodes that are hidden (quiet offline)
-let claudeEnabled = true; // persisted to postgres
+let claudeEnabled = true;    // persisted to postgres
+let preferredModel = 'anthropic/claude-sonnet-4-6'; // persisted to postgres
 
 async function persistState(key, value) {
   try {
@@ -685,6 +690,21 @@ app.post('/node/claude-mode', requireWrite, (req, res) => {
     `Claude API access has been ${enabled ? 're-enabled' : 'disabled'}.\n${enabled ? 'All nodes resuming normal operation.' : 'Clea switching to Simon. Esquie hibernating.'}`
   );
   res.json({ ok: true, claudeEnabled });
+});
+
+// ── Preferred model — GET/POST, no auth needed for GET (nodes poll this) ──────
+app.get('/node/preferred-model', (req, res) => {
+  res.json({ model: preferredModel });
+});
+
+app.post('/node/preferred-model', requireWrite, (req, res) => {
+  const { model } = req.body || {};
+  if (!model || typeof model !== 'string') return res.status(400).json({ error: 'model (string) required' });
+  const prev = preferredModel;
+  preferredModel = model;
+  persistState('preferredModel', model);
+  console.log(`[preferred-model] ${prev} → ${model}`);
+  res.json({ ok: true, model: preferredModel, previous: prev });
 });
 let chatEnabled = true;
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
