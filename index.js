@@ -854,9 +854,59 @@ app.post('/task/:id/log', requireWrite, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Esquie Failover Watcher ───────────────────────────────────────────────────
+// Runs every 3 minutes. If Clea's heartbeat is stale (>5 min), wakes Esquie.
+// If Clea is healthy, ensures Esquie stays asleep.
+
+const RAILWAY_TOKEN = process.env.RAILWAY_TOKEN || '';
+const ESQUIE_SERVICE_ID = '22f410f9-2f84-486b-8f26-f83ef75d2edc';
+const ESQUIE_ENV_ID = '5e7b129a-488b-4b0d-9d85-2b2f344e666b';
+const CLEA_STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+async function setEsquieSleep(sleep) {
+  if (!RAILWAY_TOKEN) return;
+  try {
+    const res = await fetch('https://backboard.railway.app/graphql/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RAILWAY_TOKEN}` },
+      body: JSON.stringify({ query: `mutation { serviceInstanceUpdate(input: { sleepApplication: ${sleep} }, serviceId: "${ESQUIE_SERVICE_ID}", environmentId: "${ESQUIE_ENV_ID}") }` })
+    });
+    const data = await res.json();
+    console.log(`[failover] Esquie ${sleep ? 'sleeping' : 'waking'}: ${data.data?.serviceInstanceUpdate === true ? 'OK' : JSON.stringify(data.errors)}`);
+  } catch (e) {
+    console.error('[failover] Railway API error:', e.message);
+  }
+}
+
+function startFailoverWatcher() {
+  if (!RAILWAY_TOKEN) {
+    console.log('[failover] No RAILWAY_TOKEN set — Esquie watcher disabled');
+    return;
+  }
+  setInterval(async () => {
+    try {
+      const nodes = heartbeatStore.nodes || {};
+      const clea = Object.values(nodes).find(n => n.node === 'clea');
+      if (!clea) return; // No data yet
+      const staleSec = (Date.now() / 1000) - (clea.ts || 0);
+      if (staleSec > CLEA_STALE_THRESHOLD_MS / 1000) {
+        console.log(`[failover] Clea stale (${Math.round(staleSec)}s) — waking Esquie`);
+        await setEsquieSleep(false);
+      } else {
+        await setEsquieSleep(true);
+      }
+    } catch (e) {
+      console.error('[failover] watcher error:', e.message);
+    }
+  }, 3 * 60 * 1000); // every 3 minutes
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 setup().then(() => {
-  app.listen(port, () => console.log(`Clea status on port ${port}`));
+  app.listen(port, () => {
+    console.log(`Clea status on port ${port}`);
+    startFailoverWatcher();
+  });
 }).catch(err => {
   console.error('DB setup failed:', err);
   process.exit(1);
