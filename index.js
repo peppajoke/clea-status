@@ -1015,7 +1015,7 @@ app.post('/public/chat', async (req, res) => {
 // ── JSON tasks list ──────────────────────────────────────────────────────────
 app.get('/api/tasks', requireWrite, async (req, res) => {
   const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY priority DESC, updated_at DESC`);
-  res.json(rows.map(t => ({ id: t.id, title: t.text, col: t.col, tag: t.tag, status: t.status, priority: t.priority })));
+  res.json(rows.map(t => ({ id: t.id, title: t.text, col: t.col, tag: t.tag, status: t.status, priority: t.priority, meta: t.meta || null })));
 });
 
 app.post('/task/:id/log', requireWrite, async (req, res) => {
