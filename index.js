@@ -771,41 +771,39 @@ app.post('/api/task/claim', requireWrite, async (req, res) => {
   const { agent_id } = req.body || {};
   if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
 
-  // Atomic transaction: claim next todo (orphans first, then priority)
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Orphaned tasks first (assigned_to is set but agent is dead)
-    const orphaned = await client.query(
-      `SELECT id FROM tasks WHERE col='todo' AND assigned_to IS NOT NULL 
-       ORDER BY priority DESC LIMIT 1 FOR UPDATE`
-    );
-    let task;
-    if (orphaned.rows.length) {
-      task = orphaned.rows[0];
-    } else {
-      // Otherwise grab next unclaimed todo
-      const unclaimed = await client.query(
-        `SELECT id FROM tasks WHERE col='todo' AND assigned_to IS NULL 
-         ORDER BY priority DESC LIMIT 1 FOR UPDATE`
-      );
-      task = unclaimed.rows.length ? unclaimed.rows[0] : null;
-    }
 
-    if (!task) {
+    // Step 1: Reset orphaned tasks (active but stale >2h) back to todo so they get priority
+    await client.query(
+      `UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL
+       WHERE col='active' AND assigned_to IS NOT NULL
+       AND assigned_at < NOW() - INTERVAL '2 hours'`
+    );
+
+    // Step 2: Claim next todo — orphaned (previously assigned) first, then unclaimed, priority within each
+    const result = await client.query(
+      `SELECT id FROM tasks WHERE col='todo'
+       ORDER BY
+         CASE WHEN assigned_to IS NOT NULL THEN 0 ELSE 1 END,
+         priority DESC NULLS LAST
+       LIMIT 1 FOR UPDATE`
+    );
+
+    if (!result.rows.length) {
       await client.query('COMMIT');
       return res.json({ task: null, reason: 'no todos available' });
     }
 
-    // Claim it
+    const taskId = result.rows[0].id;
     await client.query(
-      `UPDATE tasks SET assigned_to=$1, assigned_at=NOW(), col=$2 WHERE id=$3`,
-      [agent_id, 'active', task.id]
+      `UPDATE tasks SET assigned_to=$1, assigned_at=NOW(), col='active' WHERE id=$2`,
+      [agent_id, taskId]
     );
     await client.query('COMMIT');
 
-    // Return full task
-    const full = await pool.query('SELECT * FROM tasks WHERE id=$1', [task.id]);
+    const full = await pool.query('SELECT * FROM tasks WHERE id=$1', [taskId]);
     res.json({ task: full.rows[0] });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -815,51 +813,41 @@ app.post('/api/task/claim', requireWrite, async (req, res) => {
   }
 });
 
+// Called by worker agent after successfully completing a task
+// Worker agent handles emailing Jack directly via gog gmail — do not email from here
 app.post('/api/task/:id/complete', requireWrite, async (req, res) => {
-  const { agent_id } = req.body || {};
+  const { agent_id, summary } = req.body || {};
   if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
 
   await pool.query(
-    `UPDATE tasks SET col=$1, assigned_to=NULL WHERE id=$2`,
-    ['done', req.params.id]
+    `UPDATE tasks SET col='done', status='', assigned_to=NULL, assigned_at=NULL,
+     meta=COALESCE($1, meta), updated_at=NOW() WHERE id=$2`,
+    [summary || null, req.params.id]
   );
-
-  // Email Jack (queued for email cron)
-  const task = await pool.query('SELECT * FROM tasks WHERE id=$1', [req.params.id]);
-  if (task.rows.length) {
-    const t = task.rows[0];
-    const subject = `✅ Task completed: ${t.text}`;
-    const body = `Agent ${agent_id} finished: ${t.text}\n\nTask ID: ${t.id}\nTag: ${t.tag}`;
+  const { rows } = await pool.query('SELECT * FROM tasks WHERE id=$1', [req.params.id]);
+  if (rows.length) {
     await pool.query(
-      `INSERT INTO email_queue (to_addr, subject, body) VALUES ($1, $2, $3)`,
-      ['jackcbauerle@gmail.com', subject, body]
+      `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
+      [req.params.id, `✅ Completed by ${agent_id}${summary ? ': ' + summary : ''}`]
     );
   }
-
-  res.json({ ok: true });
+  res.json({ ok: true, task: rows[0] || null });
 });
 
+// Called by worker agent when a task hits a dead end — worker handles emailing Jack
 app.post('/api/task/:id/fail', requireWrite, async (req, res) => {
   const { agent_id, reason } = req.body || {};
   if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
 
   await pool.query(
-    `UPDATE tasks SET col=$1, status=$2, assigned_to=NULL, meta=$3 WHERE id=$4`,
-    ['blocked', 'failed', reason || 'Worker agent failed', req.params.id]
+    `UPDATE tasks SET col='blocked', status='failed', assigned_to=NULL, assigned_at=NULL,
+     meta=$1, updated_at=NOW() WHERE id=$2`,
+    [reason || 'Worker agent hit a dead end', req.params.id]
   );
-
-  // Email Jack
-  const task = await pool.query('SELECT * FROM tasks WHERE id=$1', [req.params.id]);
-  if (task.rows.length) {
-    const t = task.rows[0];
-    const subject = `❌ Task failed: ${t.text}`;
-    const body = `Agent ${agent_id} failed on: ${t.text}\n\nReason: ${reason || '(no details)'}\n\nTask ID: ${t.id}`;
-    await pool.query(
-      `INSERT INTO email_queue (to_addr, subject, body) VALUES ($1, $2, $3)`,
-      ['jackcbauerle@gmail.com', subject, body]
-    );
-  }
-
+  await pool.query(
+    `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
+    [req.params.id, `❌ Failed by ${agent_id}: ${reason || '(no reason given)'}`]
+  );
   res.json({ ok: true });
 });
 
