@@ -192,13 +192,16 @@ async function setup() {
     try { JSON.parse(hnRows[0].value).forEach(n => hiddenNodes.add(n)); } catch {}
   }
 
-  for (const t of SEED) {
-    await pool.query(`
-      INSERT INTO tasks (id, col, text, tag, status, meta)
-      VALUES ($1,$2,$3,$4,$5,$6)
-      ON CONFLICT (id) DO UPDATE SET
-        text=EXCLUDED.text, tag=EXCLUDED.tag
-    `, [t.id, t.col, t.text, t.tag||null, t.status||null, t.meta||null]);
+  // Seed only if tasks table is completely empty (first run only — never overwrite)
+  const { rows: taskCount } = await pool.query('SELECT COUNT(*) FROM tasks');
+  if (parseInt(taskCount[0].count) === 0) {
+    for (const t of SEED) {
+      await pool.query(`
+        INSERT INTO tasks (id, col, text, tag, status, meta)
+        VALUES ($1,$2,$3,$4,$5,$6)
+        ON CONFLICT (id) DO NOTHING
+      `, [t.id, t.col, t.text, t.tag||null, t.status||null, t.meta||null]);
+    }
   }
 
   const { rows: existing } = await pool.query('SELECT COUNT(*) FROM task_logs');
