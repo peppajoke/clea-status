@@ -844,6 +844,12 @@ app.post('/public/chat', async (req, res) => {
   }
 });
 
+// ── JSON tasks list ──────────────────────────────────────────────────────────
+app.get('/api/tasks', requireWrite, async (req, res) => {
+  const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY priority DESC, updated_at DESC`);
+  res.json(rows.map(t => ({ id: t.id, title: t.text, col: t.col, tag: t.tag, status: t.status, priority: t.priority })));
+});
+
 app.post('/task/:id/log', requireWrite, async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
@@ -852,6 +858,16 @@ app.post('/task/:id/log', requireWrite, async (req, res) => {
   if (!tasks.length) return res.status(404).json({ error: 'task not found' });
   await pool.query('INSERT INTO task_logs (task_id, message) VALUES ($1, $2)', [id, message]);
   res.json({ ok: true });
+});
+
+// ── Esquie sleep/wake control ─────────────────────────────────────────────────
+app.post('/esquie/sleep', requireWrite, async (req, res) => {
+  await setEsquieSleep(true);
+  res.json({ ok: true, action: 'sleep' });
+});
+app.post('/esquie/wake', requireWrite, async (req, res) => {
+  await setEsquieSleep(false);
+  res.json({ ok: true, action: 'wake' });
 });
 
 // ── Esquie Failover Watcher ───────────────────────────────────────────────────
