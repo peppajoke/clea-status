@@ -718,12 +718,12 @@ app.post('/node/preferred-model', requireWrite, (req, res) => {
 });
 
 // ── Queue (Jack's brain-dump todos) ──────────────────────────────────────────
-app.get('/api/queue', requireAuth, async (req, res) => {
+app.get('/api/queue', requireWrite, async (req, res) => {
   const { rows } = await pool.query(`SELECT * FROM todos ORDER BY created_at ASC`);
   res.json(rows);
 });
 
-app.post('/api/queue', requireAuth, async (req, res) => {
+app.post('/api/queue', requireWrite, async (req, res) => {
   const { text } = req.body || {};
   if (!text || !text.trim()) return res.status(400).json({ error: 'text required' });
   const { rows } = await pool.query(
@@ -733,7 +733,7 @@ app.post('/api/queue', requireAuth, async (req, res) => {
   res.json(rows[0]);
 });
 
-app.patch('/api/queue/:id', requireAuth, async (req, res) => {
+app.patch('/api/queue/:id', requireWrite, async (req, res) => {
   const { done } = req.body || {};
   const { rows } = await pool.query(
     `UPDATE todos SET done=$1 WHERE id=$2 RETURNING *`,
@@ -743,7 +743,7 @@ app.patch('/api/queue/:id', requireAuth, async (req, res) => {
   res.json(rows[0]);
 });
 
-app.delete('/api/queue/:id', requireAuth, async (req, res) => {
+app.delete('/api/queue/:id', requireWrite, async (req, res) => {
   await pool.query(`DELETE FROM todos WHERE id=$1`, [req.params.id]);
   res.json({ ok: true });
 });
