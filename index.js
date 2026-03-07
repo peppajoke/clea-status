@@ -817,6 +817,61 @@ app.post('/api/task/claim', requireWrite, async (req, res) => {
 });
 
 // Called by worker agent after successfully completing a task
+// Health check endpoint — returns system state for monitoring cron
+app.get('/api/health', async (req, res) => {
+  const issues = [];
+
+  // Tasks stuck active with no assigned_at, or assigned_at > 2h ago
+  const { rows: orphans } = await pool.query(`
+    SELECT id, text, assigned_to, assigned_at, updated_at
+    FROM tasks
+    WHERE col = 'active'
+      AND (assigned_at IS NULL OR assigned_at < NOW() - INTERVAL '2 hours')
+  `);
+  if (orphans.length) {
+    issues.push({
+      kind: 'orphaned_tasks',
+      count: orphans.length,
+      tasks: orphans.map(t => ({ id: t.id, text: t.text?.slice(0, 60), assigned_to: t.assigned_to, assigned_at: t.assigned_at }))
+    });
+    // Auto-reset orphans back to todo
+    await pool.query(`
+      UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW()
+      WHERE col='active' AND (assigned_at IS NULL OR assigned_at < NOW() - INTERVAL '2 hours')
+    `);
+  }
+
+  // Queue items pending for >12h without being processed
+  const { rows: staleQueue } = await pool.query(`
+    SELECT id, text, created_at FROM todos
+    WHERE done = false AND created_at < NOW() - INTERVAL '12 hours'
+  `);
+  if (staleQueue.length) {
+    issues.push({
+      kind: 'stale_queue_items',
+      count: staleQueue.length,
+      items: staleQueue.map(i => ({ id: i.id, text: i.text?.slice(0, 60), created_at: i.created_at }))
+    });
+  }
+
+  // Tasks stuck in active with assigned_at within 2h (worker may still be running — just report, don't reset)
+  const { rows: activeRunning } = await pool.query(`
+    SELECT id, text, assigned_to, assigned_at FROM tasks
+    WHERE col = 'active' AND assigned_at >= NOW() - INTERVAL '2 hours'
+  `);
+
+  res.json({
+    ok: issues.length === 0,
+    issues,
+    snapshot: {
+      orphansReset: orphans.length,
+      staleQueueItems: staleQueue.length,
+      activeWorkers: activeRunning.length,
+      checkedAt: new Date().toISOString()
+    }
+  });
+});
+
 // Worker agent handles emailing Jack directly via gog gmail — do not email from here
 app.post('/api/task/:id/complete', requireWrite, async (req, res) => {
   const { agent_id, summary } = req.body || {};
