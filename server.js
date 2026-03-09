@@ -481,6 +481,7 @@ app.post('/api/chat', async (req, res) => {
   }
 
   const authed = isAuthenticated(req);
+  if (!authed) return res.json({ reply: "Enter the passphrase to continue.", authenticated: false });
   if (authed && ANTHROPIC_API_KEY) {
     try {
       const model = (await getPreferredModel()).replace(/^anthropic\//, '');
