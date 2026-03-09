@@ -52,6 +52,7 @@ export default function SchedulerPage() {
   const [hour, setHour] = useState(9)
   const [dow, setDow] = useState(1)
   const [desc, setDesc] = useState('')
+  const [brain, setBrain] = useState('big')
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -68,19 +69,26 @@ export default function SchedulerPage() {
     if (!prompt.trim()) return
     await fetch('/api/prompt-schedules', {
       method: 'POST', headers,
-      body: JSON.stringify({ prompt_text: prompt.trim(), schedule_expr: buildCron(freq, hour, dow), schedule_tz: 'America/New_York', description: desc.trim() || null })
+      body: JSON.stringify({ prompt_text: prompt.trim(), schedule_expr: buildCron(freq, hour, dow), schedule_tz: 'America/New_York', description: desc.trim() || null, brain })
     })
     setPrompt('')
     setDesc('')
     setFreq('daily')
     setHour(9)
     setDow(1)
+    setBrain('big')
     load()
   }
 
   const handleToggle = async (id, currentStatus) => {
     const newStatus = currentStatus === 'active' ? 'paused' : 'active'
     await fetch(`/api/prompt-schedules/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ status: newStatus }) })
+    load()
+  }
+
+  const handleBrainToggle = async (id, currentBrain) => {
+    const newBrain = currentBrain === 'big' ? 'little' : 'big'
+    await fetch(`/api/prompt-schedules/${id}`, { method: 'PATCH', headers, body: JSON.stringify({ brain: newBrain }) })
     load()
   }
 
@@ -124,6 +132,10 @@ export default function SchedulerPage() {
               {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
             </select>
           )}
+          <div className="brain-toggle">
+            <button type="button" className={`brain-btn ${brain === 'big' ? 'brain-active' : ''}`} onClick={() => setBrain('big')} title="Big brain (Opus)">🧠</button>
+            <button type="button" className={`brain-btn ${brain === 'little' ? 'brain-active' : ''}`} onClick={() => setBrain('little')} title="Little brain (Haiku)">🐣</button>
+          </div>
           <input
             className="scheduler-desc"
             value={desc}
@@ -152,6 +164,9 @@ export default function SchedulerPage() {
                 {s.description && <div className="schedule-desc-line">{s.description}</div>}
               </div>
               <div className="schedule-actions">
+                <button className="brain-btn brain-active btn-sm" onClick={() => handleBrainToggle(s.id, s.brain || 'big')} title={`Switch to ${(s.brain || 'big') === 'big' ? 'little' : 'big'} brain`}>
+                  {(s.brain || 'big') === 'big' ? '🧠' : '🐣'}
+                </button>
                 <button className="btn btn-ghost btn-sm" onClick={() => handleToggle(s.id, s.status)}>
                   {s.status === 'active' ? 'Pause' : 'Resume'}
                 </button>
