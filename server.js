@@ -354,6 +354,7 @@ function startPromptScheduler() {
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'dist')));
+app.use('/designs', express.static(path.join(__dirname, 'public', 'designs')));
 
 function isAuthenticated(req) {
   try { jwt.verify(req.cookies?.clea_session, JWT_SECRET); return true; } catch { return false; }
