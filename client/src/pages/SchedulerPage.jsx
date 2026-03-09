@@ -45,6 +45,14 @@ function parseCron(expr) {
   return { freq: 'daily', hour, dow: 1 }
 }
 
+const ACTION_TYPES = [
+  { value: 'prompt', label: '💬 Prompt' },
+  { value: 'script', label: '📜 Script' },
+  { value: 'curl', label: '🌐 Curl' },
+]
+
+const CURL_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']
+
 export default function SchedulerPage() {
   const [schedules, setSchedules] = useState([])
   const [prompt, setPrompt] = useState('')
@@ -53,6 +61,8 @@ export default function SchedulerPage() {
   const [dow, setDow] = useState(1)
   const [desc, setDesc] = useState('')
   const [brain, setBrain] = useState('big')
+  const [actionType, setActionType] = useState('prompt')
+  const [actionConfig, setActionConfig] = useState({})
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState(null)
   const [editPrompt, setEditPrompt] = useState('')
@@ -61,6 +71,8 @@ export default function SchedulerPage() {
   const [editDow, setEditDow] = useState(1)
   const [editDesc, setEditDesc] = useState('')
   const [editBrain, setEditBrain] = useState('big')
+  const [editActionType, setEditActionType] = useState('prompt')
+  const [editActionConfig, setEditActionConfig] = useState({})
 
   const load = useCallback(async () => {
     const res = await fetch('/api/prompt-schedules', { headers: { 'x-clea-secret': SECRET } })
@@ -76,7 +88,7 @@ export default function SchedulerPage() {
     if (!prompt.trim()) return
     await fetch('/api/prompt-schedules', {
       method: 'POST', headers,
-      body: JSON.stringify({ prompt_text: prompt.trim(), schedule_expr: buildCron(freq, hour, dow), schedule_tz: 'America/New_York', description: desc.trim() || null, brain })
+      body: JSON.stringify({ prompt_text: prompt.trim(), schedule_expr: buildCron(freq, hour, dow), schedule_tz: 'America/New_York', description: desc.trim() || null, brain, action_type: actionType, action_config: actionType === 'curl' ? { ...actionConfig, url: prompt.trim() } : actionType === 'script' ? { script_path: prompt.trim() } : {} })
     })
     setPrompt('')
     setDesc('')
@@ -84,6 +96,8 @@ export default function SchedulerPage() {
     setHour(9)
     setDow(1)
     setBrain('big')
+    setActionType('prompt')
+    setActionConfig({})
     load()
   }
 
@@ -114,6 +128,8 @@ export default function SchedulerPage() {
     setEditDow(parsed.dow)
     setEditDesc(s.description || '')
     setEditBrain(s.brain || 'big')
+    setEditActionType(s.action_type || 'prompt')
+    setEditActionConfig(s.action_config || {})
   }
 
   const cancelEditing = () => setEditingId(null)
@@ -127,7 +143,9 @@ export default function SchedulerPage() {
         prompt_text: editPrompt.trim(),
         schedule_expr: buildCron(editFreq, editHour, editDow),
         description: editDesc.trim() || null,
-        brain: editBrain
+        brain: editBrain,
+        action_type: editActionType,
+        action_config: editActionType === 'curl' ? { ...editActionConfig, url: editPrompt.trim() } : editActionType === 'script' ? { script_path: editPrompt.trim() } : {}
       })
     })
     setEditingId(null)
@@ -147,13 +165,57 @@ export default function SchedulerPage() {
   return (
     <div className="scheduler-page">
       <form className="scheduler-form" onSubmit={handleCreate}>
-        <textarea
-          className="scheduler-input"
-          value={prompt}
-          onChange={e => setPrompt(e.target.value)}
-          placeholder="Prompt to run on schedule..."
-          rows={3}
-        />
+        <div className="scheduler-row" style={{ marginBottom: 8 }}>
+          <div className="action-type-toggle">
+            {ACTION_TYPES.map(t => (
+              <button key={t.value} type="button" className={`action-type-btn ${actionType === t.value ? 'action-type-active' : ''}`} onClick={() => { setActionType(t.value); setActionConfig({}) }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {actionType === 'prompt' && (
+          <textarea
+            className="scheduler-input"
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            placeholder="Prompt to run on schedule..."
+            rows={3}
+          />
+        )}
+        {actionType === 'script' && (
+          <input
+            className="scheduler-input"
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            placeholder="Script path (e.g. /usr/local/bin/my-script.sh)"
+            style={{ fontFamily: 'monospace' }}
+          />
+        )}
+        {actionType === 'curl' && (
+          <div className="curl-config">
+            <div className="scheduler-row" style={{ marginBottom: 6 }}>
+              <select className="scheduler-select scheduler-select-sm" value={actionConfig.method || 'GET'} onChange={e => setActionConfig(c => ({ ...c, method: e.target.value }))}>
+                {CURL_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <input
+                className="scheduler-input"
+                style={{ flex: 1, fontFamily: 'monospace' }}
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                placeholder="https://example.com/api/endpoint"
+              />
+            </div>
+            <textarea
+              className="scheduler-input"
+              value={actionConfig.body || ''}
+              onChange={e => setActionConfig(c => ({ ...c, body: e.target.value }))}
+              placeholder='Request body (optional JSON)'
+              rows={2}
+              style={{ fontFamily: 'monospace', fontSize: '0.85em' }}
+            />
+          </div>
+        )}
         <div className="scheduler-row">
           <select className="scheduler-select" value={freq} onChange={e => setFreq(e.target.value)}>
             {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -168,10 +230,12 @@ export default function SchedulerPage() {
               {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
             </select>
           )}
-          <div className="brain-toggle">
-            <button type="button" className={`brain-btn ${brain === 'big' ? 'brain-active' : ''}`} onClick={() => setBrain('big')} title="Big brain (Opus)">🧠</button>
-            <button type="button" className={`brain-btn ${brain === 'little' ? 'brain-active' : ''}`} onClick={() => setBrain('little')} title="Little brain (Haiku)">🐣</button>
-          </div>
+          {actionType === 'prompt' && (
+            <div className="brain-toggle">
+              <button type="button" className={`brain-btn ${brain === 'big' ? 'brain-active' : ''}`} onClick={() => setBrain('big')} title="Big brain (Opus)">🧠</button>
+              <button type="button" className={`brain-btn ${brain === 'little' ? 'brain-active' : ''}`} onClick={() => setBrain('little')} title="Little brain (Haiku)">🐣</button>
+            </div>
+          )}
           <input
             className="scheduler-desc"
             value={desc}
@@ -192,13 +256,32 @@ export default function SchedulerPage() {
             editingId === s.id ? (
               <form key={s.id} className="schedule-card schedule-editing" onSubmit={handleSaveEdit}>
                 <div className="schedule-content">
-                  <textarea
-                    className="scheduler-input"
-                    value={editPrompt}
-                    onChange={e => setEditPrompt(e.target.value)}
-                    rows={3}
-                    autoFocus
-                  />
+                  <div className="scheduler-row" style={{ marginBottom: 8 }}>
+                    <div className="action-type-toggle">
+                      {ACTION_TYPES.map(t => (
+                        <button key={t.value} type="button" className={`action-type-btn ${editActionType === t.value ? 'action-type-active' : ''}`} onClick={() => { setEditActionType(t.value); setEditActionConfig({}) }}>
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {editActionType === 'prompt' && (
+                    <textarea className="scheduler-input" value={editPrompt} onChange={e => setEditPrompt(e.target.value)} rows={3} autoFocus />
+                  )}
+                  {editActionType === 'script' && (
+                    <input className="scheduler-input" value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="Script path" style={{ fontFamily: 'monospace' }} autoFocus />
+                  )}
+                  {editActionType === 'curl' && (
+                    <div className="curl-config">
+                      <div className="scheduler-row" style={{ marginBottom: 6 }}>
+                        <select className="scheduler-select scheduler-select-sm" value={editActionConfig.method || 'GET'} onChange={e => setEditActionConfig(c => ({ ...c, method: e.target.value }))}>
+                          {CURL_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                        </select>
+                        <input className="scheduler-input" style={{ flex: 1, fontFamily: 'monospace' }} value={editPrompt} onChange={e => setEditPrompt(e.target.value)} placeholder="https://..." autoFocus />
+                      </div>
+                      <textarea className="scheduler-input" value={editActionConfig.body || ''} onChange={e => setEditActionConfig(c => ({ ...c, body: e.target.value }))} placeholder="Request body (optional JSON)" rows={2} style={{ fontFamily: 'monospace', fontSize: '0.85em' }} />
+                    </div>
+                  )}
                   <div className="scheduler-row" style={{ marginTop: 8 }}>
                     <select className="scheduler-select" value={editFreq} onChange={e => setEditFreq(e.target.value)}>
                       {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
@@ -213,16 +296,13 @@ export default function SchedulerPage() {
                         {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
                       </select>
                     )}
-                    <div className="brain-toggle">
-                      <button type="button" className={`brain-btn ${editBrain === 'big' ? 'brain-active' : ''}`} onClick={() => setEditBrain('big')} title="Big brain (Opus)">🧠</button>
-                      <button type="button" className={`brain-btn ${editBrain === 'little' ? 'brain-active' : ''}`} onClick={() => setEditBrain('little')} title="Little brain (Haiku)">🐣</button>
-                    </div>
-                    <input
-                      className="scheduler-desc"
-                      value={editDesc}
-                      onChange={e => setEditDesc(e.target.value)}
-                      placeholder="Description (optional)"
-                    />
+                    {editActionType === 'prompt' && (
+                      <div className="brain-toggle">
+                        <button type="button" className={`brain-btn ${editBrain === 'big' ? 'brain-active' : ''}`} onClick={() => setEditBrain('big')} title="Big brain (Opus)">🧠</button>
+                        <button type="button" className={`brain-btn ${editBrain === 'little' ? 'brain-active' : ''}`} onClick={() => setEditBrain('little')} title="Little brain (Haiku)">🐣</button>
+                      </div>
+                    )}
+                    <input className="scheduler-desc" value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Description (optional)" />
                   </div>
                   <div className="scheduler-row" style={{ marginTop: 8 }}>
                     <button type="submit" className="btn btn-primary btn-sm" disabled={!editPrompt.trim()}>Save</button>
@@ -236,6 +316,9 @@ export default function SchedulerPage() {
                   <div className="schedule-prompt">{s.prompt_text}</div>
                   <div className="schedule-meta">
                     <span className={`badge ${s.status === 'active' ? 'badge-active' : 'badge-todo'}`}>{s.status}</span>
+                    {s.action_type && s.action_type !== 'prompt' && (
+                      <span className={`badge badge-action-${s.action_type}`}>{s.action_type === 'script' ? '📜 script' : '🌐 curl'}</span>
+                    )}
                     <span className="schedule-freq">{scheduleLabel(s.schedule_expr)}</span>
                     {s.last_run && <span className="schedule-last">Last: {new Date(s.last_run).toLocaleString()}</span>}
                   </div>

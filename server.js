@@ -115,6 +115,8 @@ async function setup() {
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS prompt_schedules_status ON prompt_schedules(status)`);
   await pool.query(`ALTER TABLE prompt_schedules ADD COLUMN IF NOT EXISTS brain TEXT DEFAULT 'big'`);
+  await pool.query(`ALTER TABLE prompt_schedules ADD COLUMN IF NOT EXISTS action_type TEXT DEFAULT 'prompt'`);
+  await pool.query(`ALTER TABLE prompt_schedules ADD COLUMN IF NOT EXISTS action_config JSONB DEFAULT '{}'`);
 
   // Load persisted state
   const { rows } = await pool.query(`SELECT key, value FROM node_state WHERE key IN ('preferredModel', 'littleBrainModel', 'bigBrainTimeoutMinutes', 'littleBrainTimeoutMinutes', 'claudeEnabled', 'nodeHeartbeats', 'hiddenNodes')`);
@@ -232,7 +234,7 @@ async function evaluateAndExecutePrompts() {
   try {
     // Fetch all active prompt schedules
     const { rows: schedules } = await pool.query(
-      `SELECT id, prompt_text, schedule_expr, schedule_tz, last_run, next_run 
+      `SELECT id, prompt_text, schedule_expr, schedule_tz, last_run, next_run, action_type, action_config 
        FROM prompt_schedules WHERE status='active' ORDER BY created_at ASC`
     );
 
@@ -259,27 +261,46 @@ async function evaluateAndExecutePrompts() {
         const shouldRun = !lastRun || lastRun < prevRun;
 
         if (shouldRun) {
-          // Send the prompt via sessions_send to main OpenClaw session
-          try {
-            // Send prompt to main session (label can be 'main' or based on context)
-            const response = await fetch('http://localhost:3000/api/prompt-execute', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-clea-secret': 'clea-log-2026'
-              },
-              body: JSON.stringify({
-                schedule_id: schedule.id,
-                prompt_text: schedule.prompt_text
-              })
-            }).catch(() => null); // Fail silently if /api/prompt-execute doesn't exist yet
+          const actionType = schedule.action_type || 'prompt';
+          const actionConfig = schedule.action_config || {};
 
-            if (!response || !response.ok) {
-              // Fallback: Queue as a task item if sessions_send not available
-              await pool.query(
-                `INSERT INTO todos (text) VALUES ($1)`,
-                [`[Scheduled] ${schedule.prompt_text}`]
-              );
+          try {
+            if (actionType === 'script') {
+              // Run a named script
+              const scriptPath = actionConfig.script_path || schedule.prompt_text;
+              const { execSync } = await import('child_process');
+              const output = execSync(scriptPath, { timeout: 30000, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+              console.log(`[prompt-scheduler] script executed: ${scriptPath}`, output.slice(0, 200));
+            } else if (actionType === 'curl') {
+              // Run a curl/HTTP request
+              const url = actionConfig.url || schedule.prompt_text;
+              const method = (actionConfig.method || 'GET').toUpperCase();
+              const curlHeaders = actionConfig.headers || {};
+              const curlBody = actionConfig.body || null;
+              const fetchOpts = { method, headers: curlHeaders };
+              if (curlBody && method !== 'GET') fetchOpts.body = typeof curlBody === 'string' ? curlBody : JSON.stringify(curlBody);
+              const curlRes = await fetch(url, fetchOpts).catch(e => { console.error('[prompt-scheduler] curl error:', e.message); return null; });
+              if (curlRes) console.log(`[prompt-scheduler] curl ${method} ${url} → ${curlRes.status}`);
+            } else {
+              // Default: send LLM prompt
+              const response = await fetch('http://localhost:3000/api/prompt-execute', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-clea-secret': 'clea-log-2026'
+                },
+                body: JSON.stringify({
+                  schedule_id: schedule.id,
+                  prompt_text: schedule.prompt_text
+                })
+              }).catch(() => null);
+
+              if (!response || !response.ok) {
+                await pool.query(
+                  `INSERT INTO todos (text) VALUES ($1)`,
+                  [`[Scheduled] ${schedule.prompt_text}`]
+                );
+              }
             }
           } catch (e) {
             console.error('[evaluateAndExecutePrompts]', e.message);
@@ -938,7 +959,7 @@ app.get('/api/work-status', async (req, res) => {
 // ── Prompt Schedules ────────────────────────────────────────────────────────
 app.get('/api/prompt-schedules', requireAccess, async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT id, prompt_text, schedule_expr, schedule_tz, description, status, brain, last_run, next_run, created_at, updated_at FROM prompt_schedules ORDER BY created_at ASC`);
+    const { rows } = await pool.query(`SELECT id, prompt_text, schedule_expr, schedule_tz, description, status, brain, action_type, action_config, last_run, next_run, created_at, updated_at FROM prompt_schedules ORDER BY created_at ASC`);
     res.json({ schedules: rows });
   } catch (err) {
     console.error('[getPromptSchedules]', err.message);
@@ -947,15 +968,15 @@ app.get('/api/prompt-schedules', requireAccess, async (req, res) => {
 });
 
 app.post('/api/prompt-schedules', requireAccess, async (req, res) => {
-  const { prompt_text, schedule_expr, schedule_tz, description, brain } = req.body || {};
+  const { prompt_text, schedule_expr, schedule_tz, description, brain, action_type, action_config } = req.body || {};
   if (!prompt_text || !schedule_expr) return res.status(400).json({ error: 'prompt_text and schedule_expr are required' });
   
   try {
     const id = `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const { rows } = await pool.query(
-      `INSERT INTO prompt_schedules (id, prompt_text, schedule_expr, schedule_tz, description, status, brain)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [id, prompt_text, schedule_expr, schedule_tz || 'UTC', description || null, 'active', brain || 'big']
+      `INSERT INTO prompt_schedules (id, prompt_text, schedule_expr, schedule_tz, description, status, brain, action_type, action_config)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [id, prompt_text, schedule_expr, schedule_tz || 'UTC', description || null, 'active', brain || 'big', action_type || 'prompt', JSON.stringify(action_config || {})]
     );
     res.json(rows[0]);
   } catch (err) {
@@ -965,7 +986,7 @@ app.post('/api/prompt-schedules', requireAccess, async (req, res) => {
 });
 
 app.patch('/api/prompt-schedules/:id', requireAccess, async (req, res) => {
-  const { prompt_text, schedule_expr, schedule_tz, description, status, last_run, next_run, brain } = req.body || {};
+  const { prompt_text, schedule_expr, schedule_tz, description, status, last_run, next_run, brain, action_type, action_config } = req.body || {};
   
   const fields = [], vals = [];
   if (prompt_text !== undefined) { fields.push(`prompt_text=$${fields.length+1}`); vals.push(prompt_text); }
@@ -976,6 +997,8 @@ app.patch('/api/prompt-schedules/:id', requireAccess, async (req, res) => {
   if (last_run !== undefined) { fields.push(`last_run=$${fields.length+1}`); vals.push(last_run); }
   if (next_run !== undefined) { fields.push(`next_run=$${fields.length+1}`); vals.push(next_run); }
   if (brain !== undefined) { fields.push(`brain=$${fields.length+1}`); vals.push(brain); }
+  if (action_type !== undefined) { fields.push(`action_type=$${fields.length+1}`); vals.push(action_type); }
+  if (action_config !== undefined) { fields.push(`action_config=$${fields.length+1}`); vals.push(JSON.stringify(action_config)); }
   if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
   fields.push(`updated_at=NOW()`);
   vals.push(req.params.id);
