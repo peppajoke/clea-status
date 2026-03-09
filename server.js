@@ -710,23 +710,26 @@ app.get('/api/queue-next', requireAccess, async (req, res) => {
       return res.json({ ok: true, activeTask: active[0], littleBrainModel, timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes } });
     }
 
-    // Pick next todo task
-    const { rows: todos } = await pool.query(
-      `SELECT * FROM tasks WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE) ORDER BY priority DESC, updated_at ASC LIMIT 1`
+    // Atomically claim the next todo task (prevents race between concurrent workers)
+    const { rows: claimed } = await pool.query(
+      `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW()
+       WHERE id = (
+         SELECT id FROM tasks
+         WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+         ORDER BY priority DESC, updated_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING *`
     );
-    if (!todos.length) {
+    if (!claimed.length) {
       return res.json({ ok: true, activeTask: null });
     }
 
-    const task = todos[0];
-    await pool.query(
-      `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW() WHERE id=$1`,
-      [task.id]
-    );
+    const task = claimed[0];
     await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [task.id, '🚀 Task picked up by queue-worker']);
 
-    const { rows: updated } = await pool.query(`SELECT * FROM tasks WHERE id=$1`, [task.id]);
-    res.json({ ok: true, activeTask: updated[0], littleBrainModel, timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes } });
+    res.json({ ok: true, activeTask: task, littleBrainModel, timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes } });
   } catch (e) {
     console.error('[queue-next]', e.message);
     res.status(500).json({ error: e.message });
@@ -781,17 +784,21 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
     let activeTask = active[0] || null;
 
     if (!activeTask) {
-      const { rows: todos } = await pool.query(
-        `SELECT * FROM tasks WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE) ORDER BY priority DESC, updated_at ASC LIMIT 1`
+      // Atomically claim the next todo task (prevents race between concurrent workers)
+      const { rows: claimed } = await pool.query(
+        `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW()
+         WHERE id = (
+           SELECT id FROM tasks
+           WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+           ORDER BY priority DESC, updated_at ASC
+           LIMIT 1
+           FOR UPDATE SKIP LOCKED
+         )
+         RETURNING *`
       );
-      if (todos.length) {
-        await pool.query(
-          `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW() WHERE id=$1`,
-          [todos[0].id]
-        );
-        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [todos[0].id, '🚀 Task picked up by queue-worker']);
-        const { rows: updated } = await pool.query(`SELECT * FROM tasks WHERE id=$1`, [todos[0].id]);
-        activeTask = updated[0];
+      if (claimed.length) {
+        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [claimed[0].id, '🚀 Task picked up by queue-worker']);
+        activeTask = claimed[0];
       }
     }
 
