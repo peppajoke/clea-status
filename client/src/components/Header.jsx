@@ -5,6 +5,8 @@ import './Header.css'
 
 const NAV_ITEMS = [
   { path: '/', label: 'Tasks' },
+  { path: '/chat', label: 'Chat' },
+  { path: '/links', label: 'Links' },
   { path: '/scheduler', label: 'Scheduler' },
   { path: '/settings', label: 'Settings' },
 ]
