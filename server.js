@@ -72,6 +72,7 @@ async function setup() {
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS start_date DATE`);
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS brain TEXT DEFAULT 'big'`);
   await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS depends_on TEXT`);
+  await pool.query(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS complexity TEXT DEFAULT NULL`);
   await pool.query(`CREATE TABLE IF NOT EXISTS task_logs (
     id SERIAL PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
     message TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
@@ -103,6 +104,34 @@ async function setup() {
 
   // Start prompt scheduler (runs every minute)
   startPromptScheduler();
+}
+
+// ── Complexity Estimator ────────────────────────────────────────────────────
+// Estimates task complexity based on text heuristics: low, medium, high
+function estimateComplexity(text) {
+  const t = (text || '').toLowerCase();
+  const highSignals = [
+    'refactor', 'redesign', 'overhaul', 'architect', 'migrate', 'rewrite',
+    'system', 'infrastructure', 'multi-step', 'complex', 'full', 'entire',
+    'rebuild', 'rethink', 'replace', 'breaking change', 'schema', 'database migration',
+    'end-to-end', 'e2e', 'integration', 'cross-cutting', 'auth', 'security',
+    'performance', 'scale', 'deploy pipeline', 'ci/cd',
+  ];
+  const lowSignals = [
+    'typo', 'rename', 'fix typo', 'update text', 'change label', 'config',
+    'toggle', 'bump version', 'update readme', 'add comment', 'remove unused',
+    'css tweak', 'color', 'spacing', 'padding', 'margin', 'font', 'copy change',
+    'env var', 'flag', 'simple', 'minor', 'small', 'quick',
+  ];
+  const highCount = highSignals.filter(s => t.includes(s)).length;
+  const lowCount = lowSignals.filter(s => t.includes(s)).length;
+  // Multiple sentences / conjunctions suggest higher complexity
+  const multiPart = (t.match(/ and | then | also | plus /g) || []).length;
+  if (highCount >= 2 || (highCount >= 1 && multiPart >= 1)) return 'high';
+  if (highCount >= 1) return 'medium';
+  if (lowCount >= 1 && highCount === 0) return 'low';
+  // Default: medium if can't tell
+  return 'medium';
 }
 
 // ── Prompt Scheduler ────────────────────────────────────────────────────────
@@ -388,16 +417,16 @@ app.post('/api/chat', async (req, res) => {
 // ── Tasks ───────────────────────────────────────────────────────────────────
 app.get('/api/tasks', requireAccess, async (req, res) => {
   const { rows } = await pool.query(`SELECT * FROM tasks ORDER BY priority DESC, updated_at ASC`);
-  res.json(rows.map(t => ({ id: t.id, title: t.text, col: t.col, tag: t.tag, status: t.status, priority: t.priority, meta: t.meta || null, start_date: t.start_date || null, assigned_to: t.assigned_to || null, assigned_at: t.assigned_at || null, updated_at: t.updated_at || null, brain: t.brain || 'big', depends_on: t.depends_on || null })));
+  res.json(rows.map(t => ({ id: t.id, title: t.text, col: t.col, tag: t.tag, status: t.status, priority: t.priority, meta: t.meta || null, start_date: t.start_date || null, assigned_to: t.assigned_to || null, assigned_at: t.assigned_at || null, updated_at: t.updated_at || null, brain: t.brain || 'big', depends_on: t.depends_on || null, complexity: t.complexity || null })));
 });
 
 app.post('/tasks', requireAccess, async (req, res) => {
-  const { id, col, text, tag, status, meta, start_date, brain, depends_on } = req.body || {};
+  const { id, col, text, tag, status, meta, start_date, brain, depends_on, complexity } = req.body || {};
   if (!id || !col || !text) return res.status(400).json({ error: 'id, col, text required' });
   const { rows } = await pool.query(
-    `INSERT INTO tasks (id, col, text, tag, status, meta, start_date, brain, depends_on, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-     ON CONFLICT (id) DO UPDATE SET col=EXCLUDED.col, text=EXCLUDED.text, tag=EXCLUDED.tag, status=EXCLUDED.status, meta=EXCLUDED.meta, start_date=EXCLUDED.start_date, brain=EXCLUDED.brain, depends_on=EXCLUDED.depends_on, updated_at=NOW() RETURNING *`,
-    [id, col, text, tag || null, status || null, meta || null, start_date || null, brain || 'big', depends_on || null]
+    `INSERT INTO tasks (id, col, text, tag, status, meta, start_date, brain, depends_on, complexity, updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+     ON CONFLICT (id) DO UPDATE SET col=EXCLUDED.col, text=EXCLUDED.text, tag=EXCLUDED.tag, status=EXCLUDED.status, meta=EXCLUDED.meta, start_date=EXCLUDED.start_date, brain=EXCLUDED.brain, depends_on=EXCLUDED.depends_on, complexity=EXCLUDED.complexity, updated_at=NOW() RETURNING *`,
+    [id, col, text, tag || null, status || null, meta || null, start_date || null, brain || 'big', depends_on || null, complexity || null]
   );
   // Auto-detect and log GitHub links
   await detectAndLogGitHubLinks(id, text);
@@ -405,7 +434,7 @@ app.post('/tasks', requireAccess, async (req, res) => {
 });
 
 app.patch('/task/:id', requireAccess, async (req, res) => {
-  const { col, status, meta, text, priority, start_date, brain, depends_on } = req.body || {};
+  const { col, status, meta, text, priority, start_date, brain, depends_on, complexity } = req.body || {};
   const fields = [], vals = [];
   if (col        !== undefined) { fields.push(`col=$${fields.length+1}`);        vals.push(col); }
   if (status     !== undefined) { fields.push(`status=$${fields.length+1}`);     vals.push(status); }
@@ -415,6 +444,7 @@ app.patch('/task/:id', requireAccess, async (req, res) => {
   if (start_date !== undefined) { fields.push(`start_date=$${fields.length+1}`); vals.push(start_date || null); }
   if (brain      !== undefined) { fields.push(`brain=$${fields.length+1}`);      vals.push(brain || 'big'); }
   if (depends_on !== undefined) { fields.push(`depends_on=$${fields.length+1}`); vals.push(depends_on || null); }
+  if (complexity !== undefined) { fields.push(`complexity=$${fields.length+1}`); vals.push(complexity || null); }
   if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
   fields.push(`updated_at=NOW()`);
   vals.push(req.params.id);
@@ -613,11 +643,12 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
       const id = `t${Math.floor(Date.now())}`;
       const batchStartDate = batch[0].start_date || null;
       const cleanText = batchText;
+      const taskComplexity = estimateComplexity(cleanText);
       
       await pool.query(
-        `INSERT INTO tasks (id, text, col, tag, meta, start_date, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-        [id, cleanText, 'todo', 'queue-processor', batchMeta, batchStartDate]
+        `INSERT INTO tasks (id, text, col, tag, meta, start_date, complexity, updated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+        [id, cleanText, 'todo', 'queue-processor', batchMeta, batchStartDate, taskComplexity]
       );
       createdTasks.push(id);
     }

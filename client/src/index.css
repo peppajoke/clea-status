@@ -59,3 +59,5 @@ input, select, textarea { font-family: inherit; }
 .badge-big { background: rgba(0,200,255,0.1); color: var(--cyan); }
 .badge-little { background: rgba(153,51,255,0.12); color: var(--purple); }
 .badge-priority { background: rgba(255,170,0,0.12); color: var(--amber); }
+.badge-high { background: rgba(255,68,85,0.12); color: var(--red); }
+.badge-low { background: rgba(0,255,136,0.1); color: var(--green); }

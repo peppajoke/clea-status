@@ -4,6 +4,7 @@ import './TaskDetail.css'
 
 const COLS = ['todo', 'active', 'blocked', 'done']
 const BRAINS = ['big', 'little']
+const COMPLEXITIES = ['low', 'medium', 'high']
 
 export default function TaskDetail({ task, onClose, onRefresh }) {
   const [form, setForm] = useState({
@@ -11,6 +12,7 @@ export default function TaskDetail({ task, onClose, onRefresh }) {
     text: task.title || task.text || '',
     tag: task.tag || '',
     brain: task.brain || 'big',
+    complexity: task.complexity || '',
     priority: task.priority || false,
     start_date: task.start_date ? task.start_date.split('T')[0] : '',
     depends_on: task.depends_on || '',
@@ -35,6 +37,7 @@ export default function TaskDetail({ task, onClose, onRefresh }) {
       text: form.text,
       tag: form.tag || null,
       brain: form.brain,
+      complexity: form.complexity || null,
       priority: form.priority,
       start_date: form.start_date || null,
       depends_on: form.depends_on || null,
@@ -79,6 +82,16 @@ export default function TaskDetail({ task, onClose, onRefresh }) {
               <span className="field-label">Brain</span>
               <select className="field-input" value={form.brain} onChange={e => set('brain', e.target.value)}>
                 {BRAINS.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </label>
+          </div>
+
+          <div className="field-row">
+            <label className="field field-half">
+              <span className="field-label">Complexity</span>
+              <select className="field-input" value={form.complexity} onChange={e => set('complexity', e.target.value)}>
+                <option value="">—</option>
+                {COMPLEXITIES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </label>
           </div>

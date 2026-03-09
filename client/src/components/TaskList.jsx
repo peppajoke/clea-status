@@ -33,6 +33,8 @@ export default function TaskList({ tasks, onSelect, onRefresh }) {
               {t.brain && t.brain !== 'big' && (
                 <span className="badge badge-little">🧠 {t.brain}</span>
               )}
+              {t.complexity === 'high' && <span className="badge badge-high">⚠ high</span>}
+              {t.complexity === 'low' && <span className="badge badge-low">▽ low</span>}
               {t.priority && <span className="badge badge-priority">★</span>}
             </div>
             <div className="task-card-title">{t.title || t.text || 'Untitled'}</div>
