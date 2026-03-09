@@ -41,6 +41,22 @@
   border-color: var(--cyan);
 }
 
+.settings-field input[type="number"] {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.settings-field input[type="number"]:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+
 .settings-msg {
   margin-top: 12px;
   font-size: 12px;

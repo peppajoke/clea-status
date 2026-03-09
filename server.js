@@ -57,6 +57,8 @@ async function persistState(key, value) {
 // ── In-memory state ─────────────────────────────────────────────────────────
 let preferredModel = 'anthropic/claude-sonnet-4-6';
 let littleBrainModel = 'anthropic/claude-haiku-4-5';
+let bigBrainTimeoutMinutes = 15;
+let littleBrainTimeoutMinutes = 15;
 
 async function setup() {
   await waitForDb();
@@ -96,10 +98,12 @@ async function setup() {
   await pool.query(`ALTER TABLE prompt_schedules ADD COLUMN IF NOT EXISTS brain TEXT DEFAULT 'big'`);
 
   // Load persisted state
-  const { rows } = await pool.query(`SELECT key, value FROM node_state WHERE key IN ('preferredModel', 'littleBrainModel')`);
+  const { rows } = await pool.query(`SELECT key, value FROM node_state WHERE key IN ('preferredModel', 'littleBrainModel', 'bigBrainTimeoutMinutes', 'littleBrainTimeoutMinutes')`);
   for (const { key, value } of rows) {
     if (key === 'preferredModel') preferredModel = value;
     if (key === 'littleBrainModel') littleBrainModel = value;
+    if (key === 'bigBrainTimeoutMinutes') bigBrainTimeoutMinutes = parseInt(value, 10) || 15;
+    if (key === 'littleBrainTimeoutMinutes') littleBrainTimeoutMinutes = parseInt(value, 10) || 15;
   }
 
   // Start prompt scheduler (runs every minute)
@@ -659,17 +663,18 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
     }
 
     // 5. Pick a task — but ONLY if nothing is currently in progress (no parallel execution)
-    // First: detect and reset stale tasks (active with no log activity in 15 min)
-    const { rows: activeForStaleCheck } = await pool.query(`SELECT id FROM tasks WHERE col='active'`);
+    // First: detect and reset stale tasks (active with no log activity past configured timeout)
+    const { rows: activeForStaleCheck } = await pool.query(`SELECT id, brain FROM tasks WHERE col='active'`);
     for (const at of activeForStaleCheck) {
+      const timeoutMin = (at.brain === 'little') ? littleBrainTimeoutMinutes : bigBrainTimeoutMinutes;
       const { rows: recentLogs } = await pool.query(
-        `SELECT 1 FROM task_logs WHERE task_id=$1 AND created_at > NOW() - INTERVAL '15 minutes' LIMIT 1`, [at.id]
+        `SELECT 1 FROM task_logs WHERE task_id=$1 AND created_at > NOW() - INTERVAL '1 minute' * $2 LIMIT 1`, [at.id, timeoutMin]
       );
       if (!recentLogs.length) {
         await pool.query(
           `UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW() WHERE id=$1`, [at.id]
         );
-        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [at.id, '⏰ Auto-reset: no activity for >15 minutes']);
+        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [at.id, `⏰ Auto-reset: no activity for >${timeoutMin} minutes`]);
       }
     }
     const { rows: activeTasks } = await pool.query(
@@ -707,12 +712,31 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
       batches: batches.length,
       tasksCreated: createdTasks.length,
       activeTask: activeTask[0] || null,
-      littleBrainModel: littleBrainModel
+      littleBrainModel: littleBrainModel,
+      timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes }
     });
   } catch (e) {
     console.error('[queue-process]', e.message);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Queue timeouts ──────────────────────────────────────────────────────────
+app.get('/api/queue-timeouts', requireAccess, (req, res) => {
+  res.json({ big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes });
+});
+
+app.post('/api/queue-timeouts', requireAccess, async (req, res) => {
+  const { big, little } = req.body || {};
+  if (big !== undefined) {
+    bigBrainTimeoutMinutes = Math.max(1, parseInt(big, 10) || 15);
+    await persistState('bigBrainTimeoutMinutes', String(bigBrainTimeoutMinutes));
+  }
+  if (little !== undefined) {
+    littleBrainTimeoutMinutes = Math.max(1, parseInt(little, 10) || 15);
+    await persistState('littleBrainTimeoutMinutes', String(littleBrainTimeoutMinutes));
+  }
+  res.json({ ok: true, big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes });
 });
 
 // ── Health ──────────────────────────────────────────────────────────────────
