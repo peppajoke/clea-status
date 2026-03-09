@@ -54,6 +54,13 @@ export default function SchedulerPage() {
   const [desc, setDesc] = useState('')
   const [brain, setBrain] = useState('big')
   const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState(null)
+  const [editPrompt, setEditPrompt] = useState('')
+  const [editFreq, setEditFreq] = useState('daily')
+  const [editHour, setEditHour] = useState(9)
+  const [editDow, setEditDow] = useState(1)
+  const [editDesc, setEditDesc] = useState('')
+  const [editBrain, setEditBrain] = useState('big')
 
   const load = useCallback(async () => {
     const res = await fetch('/api/prompt-schedules', { headers: { 'x-clea-secret': SECRET } })
@@ -95,6 +102,35 @@ export default function SchedulerPage() {
   const handleDelete = async (id) => {
     if (!confirm('Delete this schedule?')) return
     await fetch(`/api/prompt-schedules/${id}`, { method: 'DELETE', headers })
+    load()
+  }
+
+  const startEditing = (s) => {
+    const parsed = parseCron(s.schedule_expr)
+    setEditingId(s.id)
+    setEditPrompt(s.prompt_text)
+    setEditFreq(parsed.freq)
+    setEditHour(parsed.hour)
+    setEditDow(parsed.dow)
+    setEditDesc(s.description || '')
+    setEditBrain(s.brain || 'big')
+  }
+
+  const cancelEditing = () => setEditingId(null)
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault()
+    if (!editPrompt.trim()) return
+    await fetch(`/api/prompt-schedules/${editingId}`, {
+      method: 'PATCH', headers,
+      body: JSON.stringify({
+        prompt_text: editPrompt.trim(),
+        schedule_expr: buildCron(editFreq, editHour, editDow),
+        description: editDesc.trim() || null,
+        brain: editBrain
+      })
+    })
+    setEditingId(null)
     load()
   }
 
@@ -153,26 +189,69 @@ export default function SchedulerPage() {
           <div className="empty">No schedules yet.</div>
         ) : (
           schedules.map(s => (
-            <div key={s.id} className={`schedule-card ${s.status !== 'active' ? 'schedule-paused' : ''}`}>
-              <div className="schedule-content">
-                <div className="schedule-prompt">{s.prompt_text}</div>
-                <div className="schedule-meta">
-                  <span className={`badge ${s.status === 'active' ? 'badge-active' : 'badge-todo'}`}>{s.status}</span>
-                  <span className="schedule-freq">{scheduleLabel(s.schedule_expr)}</span>
-                  {s.last_run && <span className="schedule-last">Last: {new Date(s.last_run).toLocaleString()}</span>}
+            editingId === s.id ? (
+              <form key={s.id} className="schedule-card schedule-editing" onSubmit={handleSaveEdit}>
+                <div className="schedule-content">
+                  <textarea
+                    className="scheduler-input"
+                    value={editPrompt}
+                    onChange={e => setEditPrompt(e.target.value)}
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="scheduler-row" style={{ marginTop: 8 }}>
+                    <select className="scheduler-select" value={editFreq} onChange={e => setEditFreq(e.target.value)}>
+                      {FREQUENCIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                    </select>
+                    {FREQUENCIES.find(f => f.value === editFreq)?.hasHour && (
+                      <select className="scheduler-select" value={editHour} onChange={e => setEditHour(Number(e.target.value))}>
+                        {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+                      </select>
+                    )}
+                    {FREQUENCIES.find(f => f.value === editFreq)?.hasDow && (
+                      <select className="scheduler-select scheduler-select-sm" value={editDow} onChange={e => setEditDow(Number(e.target.value))}>
+                        {DAYS.map((d, i) => <option key={i} value={i}>{d}</option>)}
+                      </select>
+                    )}
+                    <div className="brain-toggle">
+                      <button type="button" className={`brain-btn ${editBrain === 'big' ? 'brain-active' : ''}`} onClick={() => setEditBrain('big')} title="Big brain (Opus)">🧠</button>
+                      <button type="button" className={`brain-btn ${editBrain === 'little' ? 'brain-active' : ''}`} onClick={() => setEditBrain('little')} title="Little brain (Haiku)">🐣</button>
+                    </div>
+                    <input
+                      className="scheduler-desc"
+                      value={editDesc}
+                      onChange={e => setEditDesc(e.target.value)}
+                      placeholder="Description (optional)"
+                    />
+                  </div>
+                  <div className="scheduler-row" style={{ marginTop: 8 }}>
+                    <button type="submit" className="btn btn-primary btn-sm" disabled={!editPrompt.trim()}>Save</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={cancelEditing}>Cancel</button>
+                  </div>
                 </div>
-                {s.description && <div className="schedule-desc-line">{s.description}</div>}
+              </form>
+            ) : (
+              <div key={s.id} className={`schedule-card ${s.status !== 'active' ? 'schedule-paused' : ''}`} onClick={() => startEditing(s)} style={{ cursor: 'pointer' }}>
+                <div className="schedule-content">
+                  <div className="schedule-prompt">{s.prompt_text}</div>
+                  <div className="schedule-meta">
+                    <span className={`badge ${s.status === 'active' ? 'badge-active' : 'badge-todo'}`}>{s.status}</span>
+                    <span className="schedule-freq">{scheduleLabel(s.schedule_expr)}</span>
+                    {s.last_run && <span className="schedule-last">Last: {new Date(s.last_run).toLocaleString()}</span>}
+                  </div>
+                  {s.description && <div className="schedule-desc-line">{s.description}</div>}
+                </div>
+                <div className="schedule-actions" onClick={e => e.stopPropagation()}>
+                  <button className="brain-btn brain-active btn-sm" onClick={() => handleBrainToggle(s.id, s.brain || 'big')} title={`Switch to ${(s.brain || 'big') === 'big' ? 'little' : 'big'} brain`}>
+                    {(s.brain || 'big') === 'big' ? '🧠' : '🐣'}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => handleToggle(s.id, s.status)}>
+                    {s.status === 'active' ? 'Pause' : 'Resume'}
+                  </button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleDelete(s.id)}>×</button>
+                </div>
               </div>
-              <div className="schedule-actions">
-                <button className="brain-btn brain-active btn-sm" onClick={() => handleBrainToggle(s.id, s.brain || 'big')} title={`Switch to ${(s.brain || 'big') === 'big' ? 'little' : 'big'} brain`}>
-                  {(s.brain || 'big') === 'big' ? '🧠' : '🐣'}
-                </button>
-                <button className="btn btn-ghost btn-sm" onClick={() => handleToggle(s.id, s.status)}>
-                  {s.status === 'active' ? 'Pause' : 'Resume'}
-                </button>
-                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(s.id)}>×</button>
-              </div>
-            </div>
+            )
           ))
         )}
       </div>

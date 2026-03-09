@@ -119,3 +119,12 @@
   background: var(--border);
   border-color: var(--border);
 }
+
+/* Edit mode */
+.schedule-editing {
+  border-color: var(--cyan-dim);
+  flex-direction: column;
+}
+.schedule-card:not(.schedule-editing):hover {
+  border-color: var(--text-muted);
+}
