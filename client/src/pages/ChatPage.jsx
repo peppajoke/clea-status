@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import './ChatPage.css'
 
 function formatReply(text) {
-  // Basic markdown-ish: **bold**, *italic*, `code`, and newlines
   return text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
@@ -10,7 +9,7 @@ function formatReply(text) {
     .replace(/\n/g, '<br/>')
 }
 
-export default function ChatPage() {
+export default function ChatPage({ onAuth }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -43,6 +42,7 @@ export default function ChatPage() {
       const reply = data.reply || '...'
       setMessages(prev => [...prev, { role: 'assistant', content: reply }])
       setHistory(prev => [...prev, { role: 'assistant', content: reply }])
+      if (data.authenticated && onAuth) onAuth()
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong on my end.' }])
     }

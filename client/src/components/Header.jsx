@@ -3,9 +3,12 @@ import { useState, useEffect } from 'react'
 import { fetchWorkStatus } from '../api'
 import './Header.css'
 
-const NAV_ITEMS = [
-  { path: '/', label: 'Tasks' },
-  { path: '/chat', label: 'Chat' },
+const PUBLIC_NAV = [
+  { path: '/', label: 'Chat' },
+]
+
+const ADMIN_NAV = [
+  { path: '/tasks', label: 'Tasks' },
   { path: '/links', label: 'Links' },
   { path: '/scheduler', label: 'Scheduler' },
   { path: '/settings', label: 'Settings' },
@@ -18,7 +21,7 @@ const STATUS_MAP = {
   nothing_to_do: { label: 'Empty', color: 'var(--text-muted)', pulse: false },
 }
 
-export default function Header() {
+export default function Header({ authenticated }) {
   const [status, setStatus] = useState(null)
 
   useEffect(() => {
@@ -29,6 +32,7 @@ export default function Header() {
   }, [])
 
   const s = status ? (STATUS_MAP[status.status] || STATUS_MAP.nothing_to_do) : null
+  const navItems = authenticated ? [...PUBLIC_NAV, ...ADMIN_NAV] : PUBLIC_NAV
 
   return (
     <header className="header">
@@ -42,7 +46,7 @@ export default function Header() {
         )}
       </div>
       <nav className="header-nav">
-        {NAV_ITEMS.map(item => (
+        {navItems.map(item => (
           <NavLink
             key={item.path}
             to={item.path}
