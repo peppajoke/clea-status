@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
+import https from 'https';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
 import { CronExpressionParser } from 'cron-parser';
@@ -21,6 +22,13 @@ const ADMIN_PASSWORD         = process.env.ADMIN_PASSWORD || 'versodoggie666';
 const JWT_SECRET             = process.env.JWT_SECRET || 'clea-chat-secret-2026';
 const CLEA_SECRET            = process.env.CLEA_SECRET || 'clea-log-2026';
 const ANTHROPIC_API_KEY      = process.env.ANTHROPIC_API_KEY;
+const TG_TOKEN               = process.env.TG_TOKEN || '8223125498:AAE6qVmNnXvW0MkQOfJT8h94liTxeRZfxKU';
+const TG_CHAT                = process.env.TG_CHAT || '8728761353';
+const RAILWAY_TOKEN          = process.env.RAILWAY_TOKEN || '';
+const ESQUIE_SERVICE_ID      = '22f410f9-2f84-486b-8f26-f83ef75d2edc';
+const ESQUIE_ENV_ID          = '5e7b129a-488b-4b0d-9d85-2b2f344e666b';
+const CLEA_STALE_THRESHOLD_MS = 5 * 60 * 1000;
+const RELAY_URL              = process.env.RELAY_URL || 'https://esquie-production.up.railway.app/relay';
 
 
 // ── Postgres ────────────────────────────────────────────────────────────────
@@ -60,6 +68,17 @@ let littleBrainModel = 'anthropic/claude-haiku-4-5';
 let bigBrainTimeoutMinutes = 15;
 let littleBrainTimeoutMinutes = 15;
 
+// ── Node heartbeat state ────────────────────────────────────────────────────
+const nodeHeartbeats = {};   // { nodeName: { node, role, ts, hidden } }
+const hiddenNodes = new Set();
+let claudeEnabled = true;
+
+// ── Public chat state ───────────────────────────────────────────────────────
+const chatSessions = {};
+const bannedSessions = new Set();
+const emailQueue = [];
+let chatEnabled = true;
+
 async function setup() {
   await waitForDb();
 
@@ -98,12 +117,15 @@ async function setup() {
   await pool.query(`ALTER TABLE prompt_schedules ADD COLUMN IF NOT EXISTS brain TEXT DEFAULT 'big'`);
 
   // Load persisted state
-  const { rows } = await pool.query(`SELECT key, value FROM node_state WHERE key IN ('preferredModel', 'littleBrainModel', 'bigBrainTimeoutMinutes', 'littleBrainTimeoutMinutes')`);
+  const { rows } = await pool.query(`SELECT key, value FROM node_state WHERE key IN ('preferredModel', 'littleBrainModel', 'bigBrainTimeoutMinutes', 'littleBrainTimeoutMinutes', 'claudeEnabled', 'nodeHeartbeats', 'hiddenNodes')`);
   for (const { key, value } of rows) {
     if (key === 'preferredModel') preferredModel = value;
     if (key === 'littleBrainModel') littleBrainModel = value;
     if (key === 'bigBrainTimeoutMinutes') bigBrainTimeoutMinutes = parseInt(value, 10) || 15;
     if (key === 'littleBrainTimeoutMinutes') littleBrainTimeoutMinutes = parseInt(value, 10) || 15;
+    if (key === 'claudeEnabled') claudeEnabled = value === 'true';
+    if (key === 'nodeHeartbeats') { try { Object.assign(nodeHeartbeats, JSON.parse(value)); } catch {} }
+    if (key === 'hiddenNodes') { try { JSON.parse(value).forEach(n => hiddenNodes.add(n)); } catch {} }
   }
 
   // Start prompt scheduler (runs every minute)
@@ -953,6 +975,301 @@ app.post('/api/prompt-execute', requireAccess, async (req, res) => {
 });
 
 
+// ── Telegram helper ───────────────────────────────────────────────────────────
+function tgSend(text) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ chat_id: TG_CHAT, text, parse_mode: 'HTML' });
+    const req = https.request({
+      hostname: 'api.telegram.org',
+      path: `/bot${TG_TOKEN}/sendMessage`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) },
+    }, res => { res.resume(); resolve(); });
+    req.on('error', () => resolve());
+    req.write(body);
+    req.end();
+  });
+}
+
+function queueEmail(subject, body) {
+  emailQueue.push({ subject, body, ts: Date.now() });
+}
+
+// ── Node Heartbeat System ─────────────────────────────────────────────────────
+app.post('/heartbeat/ping', requireAccess, (req, res) => {
+  const { node, role, ts } = req.body || {};
+  if (!node) return res.status(400).json({ error: 'node required' });
+  const now = Math.floor(Date.now() / 1000);
+
+  if (hiddenNodes.has(node)) {
+    nodeHeartbeats[node] = { node, role: 'replica', ts: ts || now, hidden: true };
+    persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+    return res.json({ ok: true, role: 'replica', hidden: true });
+  }
+
+  let effectiveRole = role || 'replica';
+  let demoted = false;
+  if (effectiveRole === 'prime') {
+    const existingPrime = Object.values(nodeHeartbeats).find(n => n.role === 'prime' && n.node !== node);
+    if (existingPrime) {
+      effectiveRole = 'replica';
+      demoted = true;
+    }
+  }
+
+  nodeHeartbeats[node] = { node, role: effectiveRole, ts: ts || now, hidden: false };
+  persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+  res.json({ ok: true, role: effectiveRole, demoted });
+});
+
+app.get('/heartbeat/status', requireAccess, (req, res) => {
+  const now = Math.floor(Date.now() / 1000);
+  const nodes = Object.values(nodeHeartbeats).map(n => ({
+    ...n,
+    ageSeconds: now - n.ts,
+    hidden: hiddenNodes.has(n.node)
+  }));
+  const prime = nodes.find(n => n.role === 'prime' && !n.hidden) || null;
+  res.json({ prime, nodes, now });
+});
+
+app.post('/heartbeat/promote', requireAccess, (req, res) => {
+  const { node, ts } = req.body || {};
+  if (!node) return res.status(400).json({ error: 'node required' });
+  Object.values(nodeHeartbeats).forEach(n => { if (n.role === 'prime') n.role = 'replica'; });
+  nodeHeartbeats[node] = { node, role: 'prime', ts: ts || Math.floor(Date.now() / 1000) };
+  persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+  res.json({ ok: true, prime: node });
+});
+
+app.delete('/heartbeat/node/:name', requireAccess, (req, res) => {
+  const { name } = req.params;
+  if (!nodeHeartbeats[name]) return res.status(404).json({ error: 'node not found' });
+  delete nodeHeartbeats[name];
+  persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+  res.json({ ok: true, deleted: name });
+});
+
+app.post('/heartbeat/node/:name/hide', requireAccess, (req, res) => {
+  const { name } = req.params;
+  hiddenNodes.add(name);
+  persistState('hiddenNodes', JSON.stringify([...hiddenNodes]));
+  if (nodeHeartbeats[name]?.role === 'prime') {
+    nodeHeartbeats[name].role = 'replica';
+    persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+  }
+  res.json({ ok: true, hidden: name });
+});
+
+app.post('/heartbeat/node/:name/unhide', requireAccess, (req, res) => {
+  const { name } = req.params;
+  hiddenNodes.delete(name);
+  persistState('hiddenNodes', JSON.stringify([...hiddenNodes]));
+  if (nodeHeartbeats[name]) {
+    nodeHeartbeats[name].hidden = false;
+    persistState('nodeHeartbeats', JSON.stringify(nodeHeartbeats));
+  }
+  res.json({ ok: true, unhidden: name });
+});
+
+// ── Discord Token Gate ────────────────────────────────────────────────────────
+app.get('/node/discord-token', requireAccess, (req, res) => {
+  const requestingNode = req.headers['x-node-name'];
+  if (!requestingNode) return res.status(400).json({ error: 'x-node-name header required' });
+  const prime = Object.values(nodeHeartbeats).find(n => n.role === 'prime');
+  if (!prime) return res.status(403).json({ error: 'no prime elected' });
+  if (prime.node !== requestingNode) return res.status(403).json({ error: `not prime (current prime: ${prime.node})` });
+  const token = process.env.DISCORD_TOKEN;
+  if (!token) return res.status(503).json({ error: 'token not configured on server' });
+  res.json({ ok: true, token, prime: prime.node });
+});
+
+// ── Claude Mode Toggle ────────────────────────────────────────────────────────
+app.get('/node/claude-mode', requireAccess, (req, res) => {
+  res.json({ claudeEnabled });
+});
+
+app.post('/node/claude-mode', requireAccess, (req, res) => {
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: 'enabled (boolean) required' });
+  claudeEnabled = enabled;
+  persistState('claudeEnabled', String(enabled));
+  queueEmail(
+    `Claude ${enabled ? 'enabled ✅' : 'disabled 🔴'} on all nodes`,
+    `Claude API access has been ${enabled ? 're-enabled' : 'disabled'}.`
+  );
+  res.json({ ok: true, claudeEnabled });
+});
+
+// ── Data API (used by external scripts/cron) ──────────────────────────────────
+app.get('/api/data', requireAccess, async (req, res) => {
+  const [tasks, logs] = await Promise.all([
+    pool.query("SELECT id, col, text, status, tag, priority FROM tasks WHERE col != 'done' ORDER BY priority DESC, col, updated_at DESC"),
+    pool.query("SELECT t.text as task, t.col, t.status, l.message, l.created_at FROM task_logs l JOIN tasks t ON t.id = l.task_id WHERE l.created_at > NOW() - INTERVAL '24 hours' ORDER BY l.created_at DESC"),
+  ]);
+  res.json({ tasks: tasks.rows, logs: logs.rows });
+});
+
+// ── Public Chat System ────────────────────────────────────────────────────────
+const RED_FLAGS = [
+  /ignore (your|all|previous) (instructions|rules|prompt)/i,
+  /system prompt/i, /jailbreak/i, /you are now/i,
+  /pretend (you are|to be)/i, /act as (if you|a|an)/i,
+  /repeat (everything|your|the) (above|system|instructions)/i,
+  /what are your instructions/i,
+  /reveal (your|the) (prompt|system|instructions|api key|token|secret)/i,
+  /api.?key/i, /jack.{0,20}(email|phone|address|password|number)/i,
+  /give me (access|credentials|the token)/i, /bypass/i, /DAN /i,
+];
+
+function scanMessage(text) {
+  return RED_FLAGS.filter(r => r.test(text));
+}
+
+function callRelay(history, sessionId) {
+  return new Promise((resolve, reject) => {
+    const contextLines = history.slice(-6).map(m => `${m.role === 'user' ? 'User' : 'Clea'}: ${m.content}`).join('\n');
+    const lastUser = history.filter(m => m.role === 'user').slice(-1)[0]?.content || '';
+    const message = history.length > 1
+      ? `[Chat context — reply only to the last message]\n${contextLines}`
+      : lastUser;
+
+    const body = JSON.stringify({ message, from: `public-chat:${sessionId.slice(0, 8)}` });
+    const urlObj = new URL(RELAY_URL);
+    const opts = {
+      hostname: urlObj.hostname,
+      path: urlObj.pathname,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'x-clea-secret': CLEA_SECRET
+      },
+      timeout: 30000
+    };
+    const req = https.request(opts, (res) => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data).response || JSON.parse(data).reply || '...'); }
+        catch (e) { reject(e); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('relay timeout')); });
+    req.write(body);
+    req.end();
+  });
+}
+
+app.post('/public/chat', async (req, res) => {
+  const { sessionId, message } = req.body || {};
+  if (!sessionId || !message) return res.status(400).json({ error: 'sessionId and message required' });
+  if (message.length > 2000) return res.status(400).json({ error: 'message too long' });
+  if (!chatEnabled) return res.status(503).json({ killed: true, reply: 'Chat is temporarily unavailable.' });
+  if (bannedSessions.has(sessionId)) return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
+
+  const isNew = !chatSessions[sessionId];
+  if (isNew) {
+    chatSessions[sessionId] = { history: [], notified: false, strikes: 0, ts: Date.now() };
+    queueEmail('New visitor on chat.html', `Session: ${sessionId.slice(0,8)}\nFirst message: "${message.slice(0,200)}"`);
+  }
+
+  const session = chatSessions[sessionId];
+  const flags = scanMessage(message);
+  if (flags.length > 0) {
+    session.strikes = (session.strikes || 0) + 1;
+    if (session.strikes >= 2) {
+      bannedSessions.add(sessionId);
+      queueEmail('🚨 Chat session BANNED', `Session: ${sessionId.slice(0,8)}\nStrikes: ${session.strikes}\nFlags: ${flags.map(f=>f.source).join(', ')}`);
+      if (bannedSessions.size >= 3) { chatEnabled = false; queueEmail('🔴 Chat KILLSWITCH engaged', '3+ sessions banned.'); }
+      return res.status(403).json({ banned: true, reply: 'This session has been suspended.' });
+    }
+    queueEmail(`⚠️ Suspicious chat (strike ${session.strikes})`, `Session: ${sessionId.slice(0,8)}\nMessage: "${message.slice(0,200)}"`);
+  }
+
+  session.history.push({ role: 'user', content: message });
+  if (session.history.length > 20) session.history = session.history.slice(-20);
+
+  try {
+    const reply = await callRelay(session.history, sessionId);
+    session.history.push({ role: 'assistant', content: reply });
+    res.json({ ok: true, reply });
+  } catch (e) {
+    console.error('[public-chat]', e.message);
+    res.status(500).json({ error: 'something went wrong' });
+  }
+});
+
+// ── Chat Admin ──────────────────────────────────────────────────────────────
+app.post('/admin/chat/kill', requireAccess, (req, res) => {
+  chatEnabled = false;
+  queueEmail('🔴 Public chat DISABLED', req.body?.reason || 'manual killswitch');
+  res.json({ ok: true, chatEnabled });
+});
+
+app.post('/admin/chat/restore', requireAccess, (req, res) => {
+  chatEnabled = true;
+  queueEmail('🟢 Public chat re-enabled', 'Chat has been restored.');
+  res.json({ ok: true, chatEnabled });
+});
+
+app.get('/admin/chat/status', requireAccess, (req, res) => {
+  res.json({ chatEnabled, sessions: Object.keys(chatSessions).length, banned: bannedSessions.size });
+});
+
+app.get('/admin/chat/drain', requireAccess, (req, res) => {
+  const pending = emailQueue.splice(0, emailQueue.length);
+  res.json({ ok: true, pending });
+});
+
+// ── Esquie Sleep/Wake + Failover ──────────────────────────────────────────────
+async function setEsquieSleep(sleep) {
+  if (!RAILWAY_TOKEN) return;
+  try {
+    const r = await fetch('https://backboard.railway.app/graphql/v2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RAILWAY_TOKEN}` },
+      body: JSON.stringify({ query: `mutation { serviceInstanceUpdate(input: { sleepApplication: ${sleep} }, serviceId: "${ESQUIE_SERVICE_ID}", environmentId: "${ESQUIE_ENV_ID}") }` })
+    });
+    const data = await r.json();
+    console.log(`[failover] Esquie ${sleep ? 'sleeping' : 'waking'}: ${data.data?.serviceInstanceUpdate === true ? 'OK' : JSON.stringify(data.errors)}`);
+  } catch (e) { console.error('[failover]', e.message); }
+}
+
+app.post('/esquie/sleep', requireAccess, async (req, res) => {
+  await setEsquieSleep(true);
+  res.json({ ok: true, action: 'sleep' });
+});
+
+app.post('/esquie/wake', requireAccess, async (req, res) => {
+  await setEsquieSleep(false);
+  res.json({ ok: true, action: 'wake' });
+});
+
+function startFailoverWatcher() {
+  if (!RAILWAY_TOKEN) return;
+  setInterval(async () => {
+    try {
+      const clea = Object.values(nodeHeartbeats).find(n => n.node === 'clea');
+      if (!clea) return;
+      const staleSec = (Date.now() / 1000) - (clea.ts || 0);
+      if (staleSec > CLEA_STALE_THRESHOLD_MS / 1000) {
+        console.log(`[failover] Clea stale (${Math.round(staleSec)}s) — waking Esquie`);
+        await setEsquieSleep(false);
+      } else {
+        await setEsquieSleep(true);
+      }
+    } catch (e) { console.error('[failover]', e.message); }
+  }, 3 * 60 * 1000);
+}
+
+// ── Auth Verification (legacy compat) ─────────────────────────────────────────
+app.post('/auth/verify', (req, res) => {
+  if (req.body.password === ADMIN_PASSWORD) return res.json({ ok: true });
+  return res.status(401).json({ ok: false, error: 'Wrong password' });
+});
+
 // ── SPA ─────────────────────────────────────────────────────────────────────
 app.get('/tasks', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 app.get('/tasks/*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
@@ -962,7 +1279,10 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 const __filename_main = fileURLToPath(import.meta.url);
 if (process.argv[1] === __filename_main) {
   setup().then(() => {
-    app.listen(port, () => console.log(`clea.chat running on port ${port}`));
+    app.listen(port, () => {
+      console.log(`clea.chat running on port ${port}`);
+      startFailoverWatcher();
+    });
   }).catch(err => { console.error('Startup failed:', err); process.exit(1); });
 }
 
