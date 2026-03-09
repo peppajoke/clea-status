@@ -40,6 +40,13 @@ const pool = new Pool({
   password: process.env.PGPASSWORD || 'NrCCjTSKfCrhyztRHxnQbvAvNNvoPDDZ',
   ssl: { rejectUnauthorized: false },
   max: 10,
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+});
+
+// Prevent pool errors from crashing the process
+pool.on('error', (err) => {
+  console.error('[pg-pool] Unexpected error on idle client:', err.message);
 });
 
 async function waitForDb(retries = 10, delayMs = 3000) {
