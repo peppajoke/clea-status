@@ -645,7 +645,10 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
       `SELECT id FROM tasks WHERE col='active' LIMIT 1`
     );
     let pickId = null;
-    if (!activeTasks.length) {
+    if (activeTasks.length) {
+      // Active task exists — return it so a worker can resume it
+      pickId = activeTasks[0].id;
+    } else {
       pickId = createdTasks[0] || null;
       if (!pickId) {
         const { rows: todos } = await pool.query(
