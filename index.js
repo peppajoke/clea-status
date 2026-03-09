@@ -1069,7 +1069,7 @@ function startFailoverWatcher() {
   }
   setInterval(async () => {
     try {
-      const nodes = heartbeatStore.nodes || {};
+      const nodes = nodeHeartbeats || {};
       const clea = Object.values(nodes).find(n => n.node === 'clea');
       if (!clea) return; // No data yet
       const staleSec = (Date.now() / 1000) - (clea.ts || 0);
