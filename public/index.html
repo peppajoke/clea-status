@@ -921,13 +921,11 @@
     document.querySelectorAll('.hidden-nav').forEach(el => el.classList.remove('hidden-nav'));
     document.getElementById('app').classList.add('dashboard-open');
     if (!dashboardLoaded) {
-      loadDashboard();
-      dashboardLoaded = true;
+          dashboardLoaded = true;
     }
     loadCurrentModel();
     loadCurrentLittleBrainModel();
-    loadQueue();
-    // Auto-refresh tasks every 30s
+      // Auto-refresh tasks every 30s
     setInterval(loadTasks, 30000);
     // Switch to tasks view immediately
     setView('tasks');
