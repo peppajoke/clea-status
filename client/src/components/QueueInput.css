@@ -1,0 +1,54 @@
+.queue-input {
+  padding: 12px 20px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+.queue-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.queue-text {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+}
+.queue-text:focus {
+  outline: none;
+  border-color: var(--cyan-dim);
+}
+.queue-text::placeholder { color: var(--text-muted); }
+.queue-date {
+  padding: 10px 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  width: 140px;
+}
+.queue-expand {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  padding: 8px;
+}
+.queue-expand:hover { color: var(--text); }
+.queue-submit {
+  padding: 10px 16px;
+  background: var(--cyan);
+  color: var(--bg);
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+}
+.queue-submit:disabled { opacity: 0.3; cursor: not-allowed; }
+.queue-submit:not(:disabled):hover { opacity: 0.85; }

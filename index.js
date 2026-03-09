@@ -769,103 +769,89 @@ app.delete('/api/queue/:id', requireWrite, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Task worker system (complete, fail) ──────────────────────────────────────
-// Workers are pre-contextualized by the planner at spawn time — no claim step needed.
-// Planner marks tasks active (PATCH /task/:id {col:'active'}) before spawning.
-// Orphan detection + reset is handled proactively by /api/health (hourly cron).
+// ── Task worker system (claim, complete, fail) ────────────────────────────────
+app.post('/api/task/claim', requireWrite, async (req, res) => {
+  const { agent_id } = req.body || {};
+  if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
 
-// Health check endpoint — intentional side effect: auto-resets orphaned tasks on read.
-app.get('/api/health', async (req, res) => {
-  const issues = [];
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // Tasks stuck active with no assigned_at, or assigned_at > 2h ago
-  const { rows: orphans } = await pool.query(`
-    SELECT id, text, assigned_to, assigned_at, updated_at
-    FROM tasks
-    WHERE col = 'active'
-      AND (assigned_at IS NULL OR assigned_at < NOW() - INTERVAL '2 hours')
-  `);
-  if (orphans.length) {
-    issues.push({
-      kind: 'orphaned_tasks',
-      count: orphans.length,
-      tasks: orphans.map(t => ({ id: t.id, text: t.text?.slice(0, 60), assigned_to: t.assigned_to, assigned_at: t.assigned_at }))
-    });
-    // Auto-reset orphans back to todo
-    await pool.query(`
-      UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW()
-      WHERE col='active' AND (assigned_at IS NULL OR assigned_at < NOW() - INTERVAL '2 hours')
-    `);
-  }
+    // Step 1: Reset orphaned tasks (active but stale >2h) back to todo so they get priority
+    await client.query(
+      `UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL
+       WHERE col='active' AND assigned_to IS NOT NULL
+       AND assigned_at < NOW() - INTERVAL '2 hours'`
+    );
 
-  // Queue items pending for >12h without being processed
-  const { rows: staleQueue } = await pool.query(`
-    SELECT id, text, created_at FROM todos
-    WHERE done = false AND created_at < NOW() - INTERVAL '12 hours'
-  `);
-  if (staleQueue.length) {
-    issues.push({
-      kind: 'stale_queue_items',
-      count: staleQueue.length,
-      items: staleQueue.map(i => ({ id: i.id, text: i.text?.slice(0, 60), created_at: i.created_at }))
-    });
-  }
+    // Step 2: Claim next todo — orphaned (previously assigned) first, then unclaimed, priority within each
+    const result = await client.query(
+      `SELECT id FROM tasks WHERE col='todo'
+       ORDER BY
+         CASE WHEN assigned_to IS NOT NULL THEN 0 ELSE 1 END,
+         priority DESC NULLS LAST
+       LIMIT 1 FOR UPDATE`
+    );
 
-  // Tasks stuck in active with assigned_at within 2h (worker may still be running — just report, don't reset)
-  const { rows: activeRunning } = await pool.query(`
-    SELECT id, text, assigned_to, assigned_at FROM tasks
-    WHERE col = 'active' AND assigned_at >= NOW() - INTERVAL '2 hours'
-  `);
-
-  res.json({
-    ok: issues.length === 0,
-    issues,
-    snapshot: {
-      orphansReset: orphans.length,
-      staleQueueItems: staleQueue.length,
-      activeWorkers: activeRunning.length,
-      checkedAt: new Date().toISOString()
+    if (!result.rows.length) {
+      await client.query('COMMIT');
+      return res.json({ task: null, reason: 'no todos available' });
     }
-  });
+
+    const taskId = result.rows[0].id;
+    await client.query(
+      `UPDATE tasks SET assigned_to=$1, assigned_at=NOW(), col='active' WHERE id=$2`,
+      [agent_id, taskId]
+    );
+    await client.query('COMMIT');
+
+    const full = await pool.query('SELECT * FROM tasks WHERE id=$1', [taskId]);
+    res.json({ task: full.rows[0] });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
 });
 
-// Worker agents email Jack directly via gog gmail — do not email from here.
+// Called by worker agent after successfully completing a task
+// Worker agent handles emailing Jack directly via gog gmail — do not email from here
 app.post('/api/task/:id/complete', requireWrite, async (req, res) => {
   const { agent_id, summary } = req.body || {};
   if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
-  if (!summary) return res.status(400).json({ error: 'summary required' });
-
-  const { rows } = await pool.query(
-    `UPDATE tasks SET col='done', status='', assigned_to=NULL, assigned_at=NULL,
-     meta=$1, updated_at=NOW() WHERE id=$2 RETURNING *`,
-    [summary, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'task not found' });
 
   await pool.query(
-    `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
-    [req.params.id, `✅ Completed by ${agent_id}: ${summary}`]
+    `UPDATE tasks SET col='done', status='', assigned_to=NULL, assigned_at=NULL,
+     meta=COALESCE($1, meta), updated_at=NOW() WHERE id=$2`,
+    [summary || null, req.params.id]
   );
-  res.json({ ok: true, task: rows[0] });
+  const { rows } = await pool.query('SELECT * FROM tasks WHERE id=$1', [req.params.id]);
+  if (rows.length) {
+    await pool.query(
+      `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
+      [req.params.id, `✅ Completed by ${agent_id}${summary ? ': ' + summary : ''}`]
+    );
+  }
+  res.json({ ok: true, task: rows[0] || null });
 });
 
+// Called by worker agent when a task hits a dead end — worker handles emailing Jack
 app.post('/api/task/:id/fail', requireWrite, async (req, res) => {
   const { agent_id, reason } = req.body || {};
   if (!agent_id) return res.status(400).json({ error: 'agent_id required' });
-  if (!reason) return res.status(400).json({ error: 'reason required' });
-
-  const { rows } = await pool.query(
-    `UPDATE tasks SET col='blocked', status='failed', assigned_to=NULL, assigned_at=NULL,
-     meta=$1, updated_at=NOW() WHERE id=$2 RETURNING *`,
-    [reason, req.params.id]
-  );
-  if (!rows.length) return res.status(404).json({ error: 'task not found' });
 
   await pool.query(
-    `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
-    [req.params.id, `❌ Failed by ${agent_id}: ${reason}`]
+    `UPDATE tasks SET col='blocked', status='failed', assigned_to=NULL, assigned_at=NULL,
+     meta=$1, updated_at=NOW() WHERE id=$2`,
+    [reason || 'Worker agent hit a dead end', req.params.id]
   );
-  res.json({ ok: true, task: rows[0] });
+  await pool.query(
+    `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
+    [req.params.id, `❌ Failed by ${agent_id}: ${reason || '(no reason given)'}`]
+  );
+  res.json({ ok: true });
 });
 
 let chatEnabled = true;

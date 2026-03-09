@@ -1,0 +1,55 @@
+.settings-page {
+  max-width: 720px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.settings-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.settings-field {
+  margin-bottom: 16px;
+}
+
+.settings-field label {
+  display: block;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.settings-field select {
+  width: 100%;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+
+.settings-field select:focus {
+  outline: none;
+  border-color: var(--cyan);
+}
+
+.settings-msg {
+  margin-top: 12px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--cyan);
+}
+
+.empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px 20px;
+}
