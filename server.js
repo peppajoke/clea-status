@@ -130,6 +130,9 @@ async function setup() {
 
   // Start prompt scheduler (runs every minute)
   startPromptScheduler();
+
+  // Start queue auto-processor (runs every 10 minutes — no LLM needed)
+  startQueueProcessor();
 }
 
 // ── Complexity Estimator ────────────────────────────────────────────────────
@@ -158,6 +161,69 @@ function estimateComplexity(text) {
   if (lowCount >= 1 && highCount === 0) return 'low';
   // Default: medium if can't tell
   return 'medium';
+}
+
+// ── Queue Auto-Processor (script-driven, no LLM) ───────────────────────────
+// Runs on a timer: converts queue items (todos) → tasks, resets stale active tasks.
+// LLM workers only get involved for actual task execution.
+
+async function processQueueIntake() {
+  try {
+    // 1. Convert unprocessed queue items into tasks
+    const { rows: queueItems } = await pool.query(
+      `SELECT id, text, start_date FROM todos WHERE done=false ORDER BY created_at ASC`
+    );
+    
+    const createdTasks = [];
+    for (const item of queueItems) {
+      const id = `t${Date.now()}_${item.id}`;
+      const complexity = estimateComplexity(item.text);
+      await pool.query(
+        `INSERT INTO tasks (id, text, col, tag, start_date, complexity, updated_at)
+         VALUES ($1, $2, 'todo', 'queue-processor', $3, $4, NOW())`,
+        [id, item.text, item.start_date || null, complexity]
+      );
+      await pool.query(`UPDATE todos SET done=true WHERE id=$1`, [item.id]);
+      createdTasks.push(id);
+    }
+    if (createdTasks.length) {
+      console.log(`[queue-processor] Created ${createdTasks.length} task(s) from queue`);
+    }
+
+    // 2. Reset stale active tasks (no log activity past timeout)
+    const { rows: activeTasks } = await pool.query(`SELECT id, brain FROM tasks WHERE col='active'`);
+    for (const task of activeTasks) {
+      const timeoutMin = (task.brain === 'little') ? littleBrainTimeoutMinutes : bigBrainTimeoutMinutes;
+      const { rows: recentLogs } = await pool.query(
+        `SELECT 1 FROM task_logs WHERE task_id=$1 AND created_at > NOW() - INTERVAL '1 minute' * $2 LIMIT 1`,
+        [task.id, timeoutMin]
+      );
+      if (!recentLogs.length) {
+        await pool.query(
+          `UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW() WHERE id=$1`,
+          [task.id]
+        );
+        await pool.query(
+          `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
+          [task.id, `⏰ Auto-reset: no activity for >${timeoutMin} minutes`]
+        );
+        console.log(`[queue-processor] Reset stale task ${task.id}`);
+      }
+    }
+
+    return createdTasks.length;
+  } catch (e) {
+    console.error('[queue-processor]', e.message);
+    return 0;
+  }
+}
+
+function startQueueProcessor() {
+  // Run immediately, then every 10 minutes
+  processQueueIntake().catch(e => console.error('[queue-processor]', e));
+  setInterval(() => {
+    processQueueIntake().catch(e => console.error('[queue-processor]', e));
+  }, 10 * 60 * 1000);
 }
 
 // ── Prompt Scheduler ────────────────────────────────────────────────────────
@@ -612,6 +678,40 @@ app.get('/api/active-tags', requireAccess, async (req, res) => {
   res.json({ tags: rows.map(r => r.tag) });
 });
 
+// ── Queue Next (lightweight — just picks a task, no intake processing) ──────
+// Queue intake is handled by the server-side timer (startQueueProcessor).
+// This endpoint only picks the next available task for an LLM worker.
+app.get('/api/queue-next', requireAccess, async (req, res) => {
+  try {
+    // Check for existing active task first
+    const { rows: active } = await pool.query(`SELECT * FROM tasks WHERE col='active' LIMIT 1`);
+    if (active.length) {
+      return res.json({ ok: true, activeTask: active[0], littleBrainModel, timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes } });
+    }
+
+    // Pick next todo task
+    const { rows: todos } = await pool.query(
+      `SELECT * FROM tasks WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE) ORDER BY priority DESC, updated_at ASC LIMIT 1`
+    );
+    if (!todos.length) {
+      return res.json({ ok: true, activeTask: null });
+    }
+
+    const task = todos[0];
+    await pool.query(
+      `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW() WHERE id=$1`,
+      [task.id]
+    );
+    await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [task.id, '🚀 Task picked up by queue-worker']);
+
+    const { rows: updated } = await pool.query(`SELECT * FROM tasks WHERE id=$1`, [task.id]);
+    res.json({ ok: true, activeTask: updated[0], littleBrainModel, timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes } });
+  } catch (e) {
+    console.error('[queue-next]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── Queue ───────────────────────────────────────────────────────────────────
 app.get('/api/queue', requireAccess, async (req, res) => {
   const { rows } = await pool.query(`SELECT * FROM todos ORDER BY created_at ASC`);
@@ -647,94 +747,40 @@ app.delete('/api/queue/:id', requireAccess, async (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Queue processor (mechanical work: read → batch → create tasks → mark active) ──
+// ── Queue processor (legacy compat — delegates to shared functions) ─────────
+// Queue intake now runs automatically via server-side timer (startQueueProcessor).
+// This endpoint is kept for backward compatibility but just triggers intake + picks next task.
 app.post('/api/queue-process', requireAccess, async (req, res) => {
   try {
-    // 1. Read unprocessed queue items
-    const { rows: queueItems } = await pool.query(
-      `SELECT id, text, start_date FROM todos WHERE done=false ORDER BY created_at ASC`
-    );
+    // Run intake (usually already done by timer, but safe to call again)
+    const created = await processQueueIntake();
 
-    // 2. One queue item = one task (no batching — batching merged unrelated items)
-    const batches = queueItems.map(item => [item]);
+    // Pick next task (same logic as GET /api/queue-next)
+    const { rows: active } = await pool.query(`SELECT * FROM tasks WHERE col='active' LIMIT 1`);
+    let activeTask = active[0] || null;
 
-    // 3. Create tasks from batches
-    const createdTasks = [];
-    for (const batch of batches) {
-      const batchText = batch.length === 1 
-        ? batch[0].text 
-        : `${batch[0].text.split(':')[0]}: ${batch.map(i => i.text).join(' + ')}`;
-      
-      const batchMeta = null;
-      const id = `t${Math.floor(Date.now())}`;
-      const batchStartDate = batch[0].start_date || null;
-      const cleanText = batchText;
-      const taskComplexity = estimateComplexity(cleanText);
-      
-      await pool.query(
-        `INSERT INTO tasks (id, text, col, tag, meta, start_date, complexity, updated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-        [id, cleanText, 'todo', 'queue-processor', batchMeta, batchStartDate, taskComplexity]
+    if (!activeTask) {
+      const { rows: todos } = await pool.query(
+        `SELECT * FROM tasks WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE) ORDER BY priority DESC, updated_at ASC LIMIT 1`
       );
-      createdTasks.push(id);
-    }
-
-    // 4. Mark queue items as done
-    for (const item of queueItems) {
-      await pool.query(`UPDATE todos SET done=true WHERE id=$1`, [item.id]);
-    }
-
-    // 5. Pick a task — but ONLY if nothing is currently in progress (no parallel execution)
-    // First: detect and reset stale tasks (active with no log activity past configured timeout)
-    const { rows: activeForStaleCheck } = await pool.query(`SELECT id, brain FROM tasks WHERE col='active'`);
-    for (const at of activeForStaleCheck) {
-      const timeoutMin = (at.brain === 'little') ? littleBrainTimeoutMinutes : bigBrainTimeoutMinutes;
-      const { rows: recentLogs } = await pool.query(
-        `SELECT 1 FROM task_logs WHERE task_id=$1 AND created_at > NOW() - INTERVAL '1 minute' * $2 LIMIT 1`, [at.id, timeoutMin]
-      );
-      if (!recentLogs.length) {
+      if (todos.length) {
         await pool.query(
-          `UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW() WHERE id=$1`, [at.id]
+          `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW() WHERE id=$1`,
+          [todos[0].id]
         );
-        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [at.id, `⏰ Auto-reset: no activity for >${timeoutMin} minutes`]);
-      }
-    }
-    const { rows: activeTasks } = await pool.query(
-      `SELECT id FROM tasks WHERE col='active' LIMIT 1`
-    );
-    let pickId = null;
-    if (activeTasks.length) {
-      // Active task exists — return it so a worker can resume it
-      pickId = activeTasks[0].id;
-    } else {
-      pickId = createdTasks[0] || null;
-      if (!pickId) {
-        const { rows: todos } = await pool.query(
-          `SELECT id FROM tasks WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE) ORDER BY priority DESC, updated_at ASC LIMIT 1`
-        );
-        if (todos.length) pickId = todos[0].id;
-      }
-      if (pickId) {
-        await pool.query(
-          `UPDATE tasks SET col='active', assigned_to='queue-processor', assigned_at=NOW() WHERE id=$1`,
-          [pickId]
-        );
-        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [pickId, '🚀 Task picked up by queue-processor']);
+        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [todos[0].id, '🚀 Task picked up by queue-worker']);
+        const { rows: updated } = await pool.query(`SELECT * FROM tasks WHERE id=$1`, [todos[0].id]);
+        activeTask = updated[0];
       }
     }
 
-    // 6. Return the active task
-    const { rows: activeTask } = await pool.query(
-      `SELECT * FROM tasks WHERE id=$1`, [pickId]
-    );
-
-    res.json({ 
-      ok: true, 
-      queued: queueItems.length, 
-      batches: batches.length,
-      tasksCreated: createdTasks.length,
-      activeTask: activeTask[0] || null,
-      littleBrainModel: littleBrainModel,
+    res.json({
+      ok: true,
+      queued: 0,
+      batches: 0,
+      tasksCreated: created,
+      activeTask,
+      littleBrainModel,
       timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes }
     });
   } catch (e) {
