@@ -31,7 +31,7 @@ export default function Header() {
   return (
     <header className="header">
       <div className="header-brand">
-        <a href="/" className="header-logo">Clea</a>
+        <NavLink to="/" className="header-logo">Clea</NavLink>
         {s && (
           <span className="header-status">
             <span className={`header-status-dot ${s.pulse ? 'pulse' : ''}`} style={{ background: s.color }} />
@@ -40,7 +40,6 @@ export default function Header() {
         )}
       </div>
       <nav className="header-nav">
-        <a href="/" className="header-link">Chat</a>
         {NAV_ITEMS.map(item => (
           <NavLink
             key={item.path}
