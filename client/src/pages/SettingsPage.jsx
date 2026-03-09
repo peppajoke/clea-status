@@ -3,9 +3,20 @@ import './SettingsPage.css'
 
 const SECRET = 'clea-log-2026'
 
+// Maps short alias ↔ full model id
+const MODEL_ALIASES = {
+  haiku: 'anthropic/claude-haiku-4-5',
+  sonnet: 'anthropic/claude-sonnet-4-6',
+  opus: 'anthropic/claude-opus-4-6',
+}
+const ALIAS_FROM_MODEL = Object.fromEntries(
+  Object.entries(MODEL_ALIASES).map(([a, m]) => [m, a])
+)
+const toAlias = (model) => ALIAS_FROM_MODEL[model] || model
+const toModel = (alias) => MODEL_ALIASES[alias] || alias
+
 export default function SettingsPage() {
-  const [main, setMain] = useState('haiku')
-  const [big, setBig] = useState('sonnet')
+  const [preferred, setPreferred] = useState('sonnet')
   const [little, setLittle] = useState('haiku')
   const [bigTimeout, setBigTimeout] = useState('15')
   const [littleTimeout, setLittleTimeout] = useState('15')
@@ -18,27 +29,22 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const [r1, r2, r3, r4] = await Promise.all([
-        fetch('/api/node-state/mainSessionBrain', { headers: { 'x-clea-secret': SECRET } }),
-        fetch('/api/node-state/bigBrainModel', { headers: { 'x-clea-secret': SECRET } }),
-        fetch('/api/node-state/littleBrainModel', { headers: { 'x-clea-secret': SECRET } }),
+      const [r1, r2, r3] = await Promise.all([
+        fetch('/node/preferred-model'),
+        fetch('/node/little-brain-model'),
         fetch('/api/queue-timeouts', { headers: { 'x-clea-secret': SECRET } })
       ])
       
       if (r1.ok) {
         const d = await r1.json()
-        setMain(d.value || 'haiku')
+        setPreferred(toAlias(d.model || 'anthropic/claude-sonnet-4-6'))
       }
       if (r2.ok) {
         const d = await r2.json()
-        setBig(d.value || 'sonnet')
+        setLittle(toAlias(d.model || 'anthropic/claude-haiku-4-5'))
       }
       if (r3.ok) {
         const d = await r3.json()
-        setLittle(d.value || 'haiku')
-      }
-      if (r4.ok) {
-        const d = await r4.json()
         setBigTimeout(String(d.big || 15))
         setLittleTimeout(String(d.little || 15))
       }
@@ -51,35 +57,29 @@ export default function SettingsPage() {
   const handleSave = async () => {
     setMsg('Saving...')
     try {
-      const headers = { 'x-clea-secret': SECRET, 'Content-Type': 'application/json' }
+      const headers = { 'Content-Type': 'application/json' }
+      const authHeaders = { 'x-clea-secret': SECRET, 'Content-Type': 'application/json' }
       
-      const r1 = await fetch('/api/node-state/mainSessionBrain', {
+      const r1 = await fetch('/node/preferred-model', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ value: main })
+        body: JSON.stringify({ model: toModel(preferred) })
       })
-      if (!r1.ok) throw new Error(`mainSessionBrain: ${r1.status}`)
+      if (!r1.ok) throw new Error(`preferredModel: ${r1.status}`)
       
-      const r2 = await fetch('/api/node-state/bigBrainModel', {
+      const r2 = await fetch('/node/little-brain-model', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ value: big })
+        body: JSON.stringify({ model: toModel(little) })
       })
-      if (!r2.ok) throw new Error(`bigBrainModel: ${r2.status}`)
+      if (!r2.ok) throw new Error(`littleBrainModel: ${r2.status}`)
       
-      const r3 = await fetch('/api/node-state/littleBrainModel', {
+      const r3 = await fetch('/api/queue-timeouts', {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ value: little })
-      })
-      if (!r3.ok) throw new Error(`littleBrainModel: ${r3.status}`)
-      
-      const r4 = await fetch('/api/queue-timeouts', {
-        method: 'POST',
-        headers,
+        headers: authHeaders,
         body: JSON.stringify({ big: parseInt(bigTimeout, 10) || 15, little: parseInt(littleTimeout, 10) || 15 })
       })
-      if (!r4.ok) throw new Error(`queue-timeouts: ${r4.status}`)
+      if (!r3.ok) throw new Error(`queue-timeouts: ${r3.status}`)
       
       setMsg('✓ Saved')
       setTimeout(() => setMsg(''), 3000)
@@ -96,17 +96,8 @@ export default function SettingsPage() {
         <h2 style={{ marginTop: 0 }}>Brain Settings</h2>
         
         <div className="settings-field">
-          <label>Main Session</label>
-          <select value={main} onChange={(e) => setMain(e.target.value)}>
-            <option value="haiku">Haiku</option>
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-          </select>
-        </div>
-
-        <div className="settings-field">
-          <label>Big Brain Tasks</label>
-          <select value={big} onChange={(e) => setBig(e.target.value)}>
+          <label>Preferred Model (Main + Big Brain)</label>
+          <select value={preferred} onChange={(e) => setPreferred(e.target.value)}>
             <option value="haiku">Haiku</option>
             <option value="sonnet">Sonnet</option>
             <option value="opus">Opus</option>
