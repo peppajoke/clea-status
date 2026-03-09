@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { fetchWorkStatus } from '../api'
 import './Header.css'
 
 const NAV_ITEMS = [
@@ -7,11 +9,38 @@ const NAV_ITEMS = [
   { path: '/settings', label: 'Settings' },
 ]
 
+const STATUS_MAP = {
+  working: { label: 'Working', color: 'var(--cyan)', pulse: true },
+  locked_in: { label: 'Locked In', color: 'var(--purple)', pulse: true },
+  taking_a_break: { label: 'Idle', color: 'var(--amber)', pulse: false },
+  nothing_to_do: { label: 'Empty', color: 'var(--text-muted)', pulse: false },
+}
+
 export default function Header() {
+  const [status, setStatus] = useState(null)
+
+  useEffect(() => {
+    const load = () => fetchWorkStatus().then(setStatus).catch(() => {})
+    load()
+    const interval = setInterval(load, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const s = status ? (STATUS_MAP[status.status] || STATUS_MAP.nothing_to_do) : null
+
   return (
     <header className="header">
-      <NavLink to="/tasks" className="header-logo">Clea</NavLink>
+      <div className="header-brand">
+        <a href="/" className="header-logo">Clea</a>
+        {s && (
+          <span className="header-status">
+            <span className={`header-status-dot ${s.pulse ? 'pulse' : ''}`} style={{ background: s.color }} />
+            <span className="header-status-label" style={{ color: s.color }}>{s.label}</span>
+          </span>
+        )}
+      </div>
       <nav className="header-nav">
+        <a href="/" className="header-link">Chat</a>
         {NAV_ITEMS.map(item => (
           <NavLink
             key={item.path}
