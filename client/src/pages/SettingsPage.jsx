@@ -7,8 +7,8 @@ export default function SettingsPage() {
   const [main, setMain] = useState('haiku')
   const [big, setBig] = useState('sonnet')
   const [little, setLittle] = useState('haiku')
-  const [bigTimeout, setBigTimeout] = useState(15)
-  const [littleTimeout, setLittleTimeout] = useState(15)
+  const [bigTimeout, setBigTimeout] = useState('15')
+  const [littleTimeout, setLittleTimeout] = useState('15')
   const [loading, setLoading] = useState(true)
   const [msg, setMsg] = useState('')
 
@@ -39,8 +39,8 @@ export default function SettingsPage() {
       }
       if (r4.ok) {
         const d = await r4.json()
-        setBigTimeout(d.big || 15)
-        setLittleTimeout(d.little || 15)
+        setBigTimeout(String(d.big || 15))
+        setLittleTimeout(String(d.little || 15))
       }
     } catch (e) {
       console.error('Failed to load settings:', e)
@@ -77,7 +77,7 @@ export default function SettingsPage() {
       const r4 = await fetch('/api/queue-timeouts', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ big: bigTimeout, little: littleTimeout })
+        body: JSON.stringify({ big: parseInt(bigTimeout, 10) || 15, little: parseInt(littleTimeout, 10) || 15 })
       })
       if (!r4.ok) throw new Error(`queue-timeouts: ${r4.status}`)
       
@@ -134,7 +134,7 @@ export default function SettingsPage() {
             min="1"
             max="120"
             value={bigTimeout}
-            onChange={(e) => setBigTimeout(parseInt(e.target.value, 10) || 15)}
+            onChange={(e) => setBigTimeout(e.target.value)}
           />
         </div>
 
@@ -145,7 +145,7 @@ export default function SettingsPage() {
             min="1"
             max="120"
             value={littleTimeout}
-            onChange={(e) => setLittleTimeout(parseInt(e.target.value, 10) || 15)}
+            onChange={(e) => setLittleTimeout(e.target.value)}
           />
         </div>
 
