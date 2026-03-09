@@ -1381,10 +1381,11 @@ app.post('/api/shirt-ideas', requireAccess, async (req, res) => {
     for (const item of items) {
       if (!item.text) continue;
       const { rows } = await pool.query(
-        `INSERT INTO shirt_ideas (text, source, category, product_types, notes, description)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        `INSERT INTO shirt_ideas (text, source, category, product_types, notes, description, design_url, design_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
         [item.text, item.source || null, item.category || null,
-         item.product_types || ['t-shirt'], item.notes || null, item.description || null]
+         item.product_types || ['t-shirt'], item.notes || null, item.description || null,
+         item.design_url || null, item.design_type || 'text']
       );
       created.push(rows[0]);
     }
@@ -1410,10 +1411,26 @@ app.post('/api/shirt-ideas/:id/approve', requireAccess, async (req, res) => {
       try {
         const types = idea.product_types || ['t-shirt'];
         const productType = types.length === 1 ? types[0] : types;
-        const payload = { text: idea.text, productType };
-        if (idea.description) payload.description = idea.description;
+        let payload, endpoint;
+
+        if (idea.design_type === 'graphic' && idea.design_url) {
+          // Graphic design — use /products with designImageUrl
+          payload = {
+            title: idea.text,
+            designImageUrl: idea.design_url,
+            productType
+          };
+          if (idea.description) payload.description = idea.description;
+          endpoint = '/api/manage/products';
+        } else {
+          // Text design — use /products/text
+          payload = { text: idea.text, productType };
+          if (idea.description) payload.description = idea.description;
+          endpoint = '/api/manage/products/text';
+        }
+
         const body = JSON.stringify(payload);
-        const url = new URL('/api/manage/products/text', studioBase);
+        const url = new URL(endpoint, studioBase);
 
         const result = await new Promise((resolve, reject) => {
           const req2 = https.request(url, {

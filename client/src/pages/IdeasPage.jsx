@@ -26,14 +26,22 @@ function IdeaCard({ idea, onApprove, onDeny, onDelete, isPending }) {
   return (
     <div className={`idea-card idea-${idea.status}`}>
       <div className="idea-top" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
-        <div className="idea-text">{idea.text}</div>
-        <div className="idea-meta">
-          {idea.source && <span className="idea-source">{idea.source}</span>}
-          {idea.category && <span className="idea-category">{idea.category}</span>}
-          <span className="idea-time">{timeAgo(idea.created_at)}</span>
-          {idea.product_types?.length > 0 && (
-            <span className="idea-types">{idea.product_types.join(', ')}</span>
+        <div className="idea-top-content">
+          {idea.design_url && (
+            <img className="idea-thumb" src={idea.design_url} alt={idea.text} />
           )}
+          <div className="idea-top-text">
+            <div className="idea-text">{idea.text}</div>
+            <div className="idea-meta">
+              {idea.design_type === 'graphic' && <span className="idea-badge-graphic">🎨 graphic</span>}
+              {idea.source && <span className="idea-source">{idea.source}</span>}
+              {idea.category && <span className="idea-category">{idea.category}</span>}
+              <span className="idea-time">{timeAgo(idea.created_at)}</span>
+              {idea.product_types?.length > 0 && (
+                <span className="idea-types">{idea.product_types.join(', ')}</span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
       {(expanded || idea.description) && (
