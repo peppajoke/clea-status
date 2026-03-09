@@ -711,11 +711,13 @@ app.get('/api/queue-next', requireAccess, async (req, res) => {
     }
 
     // Atomically claim the next todo task (prevents race between concurrent workers)
+    // Tasks with depends_on are only eligible if the dependency task is done
     const { rows: claimed } = await pool.query(
       `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW()
        WHERE id = (
          SELECT id FROM tasks
          WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+           AND (depends_on IS NULL OR EXISTS (SELECT 1 FROM tasks dep WHERE dep.id = tasks.depends_on AND dep.col = 'done'))
          ORDER BY priority DESC, updated_at ASC
          LIMIT 1
          FOR UPDATE SKIP LOCKED
@@ -785,11 +787,13 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
 
     if (!activeTask) {
       // Atomically claim the next todo task (prevents race between concurrent workers)
+      // Tasks with depends_on are only eligible if the dependency task is done
       const { rows: claimed } = await pool.query(
         `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW()
          WHERE id = (
            SELECT id FROM tasks
            WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+             AND (depends_on IS NULL OR EXISTS (SELECT 1 FROM tasks dep WHERE dep.id = tasks.depends_on AND dep.col = 'done'))
            ORDER BY priority DESC, updated_at ASC
            LIMIT 1
            FOR UPDATE SKIP LOCKED
