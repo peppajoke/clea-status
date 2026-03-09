@@ -346,8 +346,8 @@ function startPromptScheduler() {
 // ── Middleware ──────────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(cookieParser());
-app.use('/tasks', express.static(path.join(__dirname, 'dist')));
-app.use('/static', express.static(path.join(__dirname, 'public')));
+app.use('/tasks', requireAccess, express.static(path.join(__dirname, 'dist')));
+app.use('/static', requireAccess, express.static(path.join(__dirname, 'public')));
 
 function isAuthenticated(req) {
   try { jwt.verify(req.cookies?.clea_session, JWT_SECRET); return true; } catch { return false; }
@@ -1351,8 +1351,8 @@ app.post('/auth/verify', (req, res) => {
 });
 
 // ── SPA ─────────────────────────────────────────────────────────────────────
-app.get('/tasks', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
-app.get('/tasks/*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+app.get('/tasks', requireAccess, (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
+app.get('/tasks/*', requireAccess, (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 // ── Start ────────────────────────────────────────────────────────────────────
