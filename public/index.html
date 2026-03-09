@@ -732,20 +732,18 @@
     </div>
     <nav id="nav">
       <div class="nav-section">Dashboard</div>
-      <div class="nav-item active" data-view="tasks" onclick="setView('tasks')">
+      <a class="nav-item" href="/tasks" style="text-decoration:none">
         <span class="icon">◧</span> Tasks
-      </div>
-      <div class="nav-item" data-view="admin" onclick="setView('admin')">
-        <span class="icon">⚙</span> Admin
-      </div>
-      <div class="nav-item" data-view="links" onclick="setView('links')">
-        <span class="icon">◎</span> Links
-      </div>
+      </a>
       <a class="nav-item" href="/tasks/scheduler" style="text-decoration:none">
         <span class="icon">⏱</span> Scheduler
       </a>
-      <div id="nav-queue" style="display:none"></div>
-      <div id="nav-admin" style="display:none"></div>
+      <a class="nav-item" href="/tasks/settings" style="text-decoration:none">
+        <span class="icon">⚙</span> Settings
+      </a>
+      <div class="nav-item" data-view="links" onclick="setView('links')">
+        <span class="icon">◎</span> Links
+      </div>
     </nav>
     <div id="sidebar-footer">
       <div style="color:var(--text-muted);font-size:11px;">clea.chat · v1.0</div>
@@ -792,7 +790,6 @@
 
   <!-- Dashboard panel -->
   <aside id="dashboard-panel">
-    <div id="view-queue" class="d-view" style="display:none"></div>
     <div id="view-links" class="d-view" style="display:none">
       <div class="d-section" style="padding-bottom:0">
         <div class="d-label">BauerSoft</div>
@@ -837,31 +834,6 @@
       </div>
     </div>
 
-    <div id="view-tasks" class="d-view" style="display:none;padding:0">
-      <div style="padding:20px 20px 0;border-bottom:1px solid var(--border)">
-        <div style="margin-bottom:12px;display:flex;gap:8px">
-          <button id="start-work-btn" onclick="startWorkFlow()" style="flex:1;padding:12px;background:var(--cyan);color:var(--bg);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;letter-spacing:0.05em;text-transform:uppercase">Start Work</button>
-          <button onclick="loadTasks()" title="Refetch all tasks" style="padding:12px 16px;background:var(--border);color:var(--text);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.15s" onmouseover="this.style.background='var(--border2)'" onmouseout="this.style.background='var(--border)'">🔄</button>
-        </div>
-        <div id="task-tabs" style="display:flex;gap:0;margin:0 -20px;padding:0 20px">
-          <button class="ttab active" data-col="execution" onclick="filterTasks('execution')">Execution Queue</button>
-          <button class="ttab" data-col="blocked" onclick="filterTasks('blocked')">Blocked</button>
-          <button class="ttab" data-col="rejected" onclick="filterTasks('rejected')">Rejected</button>
-          <button class="ttab" data-col="done" onclick="filterTasks('done')">Done</button>
-        </div>
-      </div>
-      <div style="padding:20px;overflow-y:auto;flex:1">
-        <div id="tasks-content" class="tasks-list">
-          <div style="color:var(--text-muted);font-size:12px">Loading...</div>
-        </div>
-
-      </div>
-    </div>
-    <div id="view-admin" class="d-view" style="display:none">
-
-
-
-    </div>
   </aside>
 </div>
 
@@ -961,7 +933,7 @@
     setView('tasks');
   }
 
-  const VIEW_TITLES = { tasks: 'Tasks', admin: 'Admin', links: 'Links' };
+  const VIEW_TITLES = { links: 'Links' };
 
   // ── View switching ──────────────────────────────────────────────────────
   function setView(view) {
@@ -977,7 +949,7 @@
     }
 
     // Dashboard views require auth — show lock screen if not authed
-    const isDashboardView = ['tasks', 'admin', 'queue'].includes(view); // 'links' is always public
+    const isDashboardView = false; // React handles dashboard views
     if (isDashboardView && !authenticated) {
       if (isMobile()) {
         const panel = document.getElementById('mobile-panel');
@@ -1202,432 +1174,6 @@
   function escapeHtml(str) {
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>');
   }
-
-  // ── Dashboard ───────────────────────────────────────────────────────────
-  async function loadDashboard() {
-    loadTasks();
-  }
-
-  let allTasks = [];
-  let taskFilter = 'execution';
-
-  // col mapping: "progress" tasks show under "in progress" tab, "active" maps to same
-  const COL_DISPLAY = { todo: 'Todo', progress: 'In Progress', active: 'Active', blocked: 'Blocked', failed: 'Failed', rejected: 'Rejected', done: 'Done', queued: 'Queued' };
-
-  async function loadTasks() {
-    // Prevent overlapping requests
-    if (loadTasksInProgress) return;
-    loadTasksInProgress = true;
-    
-    try {
-      const res = await fetch('/api/tasks');
-      const data = await res.json();
-      allTasks = Array.isArray(data) ? data : (data.tasks || []);
-      renderTasks();
-    } catch {
-      const errorMsg = '<div style="color:var(--text-muted);font-size:12px">Unavailable</div>';
-      // Only update visible content
-      const desktopContent = document.getElementById('tasks-content');
-      if (desktopContent) desktopContent.innerHTML = errorMsg;
-      const mobileTasksList = document.getElementById('mobile-panel')?.querySelector('.tasks-list');
-      if (mobileTasksList) mobileTasksList.innerHTML = errorMsg;
-    } finally {
-      loadTasksInProgress = false;
-    }
-  }
-
-  async function processQueue() {
-    const btn = document.getElementById('process-queue-btn') || document.getElementById('process-queue-btn-m');
-    if (btn) { btn.textContent = 'Triggering…'; btn.disabled = true; }
-    try {
-      const res = await fetch('/api/admin/planner-trigger', { method: 'POST', headers: { 'x-write-password': localStorage.getItem('clea-pass') || '' } });
-      const data = await res.json();
-      if (data.ok) {
-        if (btn) { btn.textContent = '✓ Triggered — worker incoming (~30s)'; btn.style.color = 'var(--green)'; }
-        setTimeout(() => { loadTasks(); }, 5000);
-      } else {
-        if (btn) { btn.textContent = 'Error'; btn.style.color = 'red'; }
-      }
-      setTimeout(() => { 
-        if (btn) { btn.textContent = '⚡ Pick Up New Tasks'; btn.disabled = false; btn.style.color = 'var(--cyan)'; }
-      }, 5000);
-    } catch {
-      btn.textContent = 'Error'; btn.disabled = false; btn.style.color = 'red';
-    }
-  }
-
-  function filterTasks(col) {
-    taskFilter = col;
-    // Update tab states in both desktop and mobile
-    const updateTabs = (container) => {
-      container?.querySelectorAll('.ttab').forEach(el => el.classList.toggle('active', el.dataset.col === col));
-    };
-    updateTabs(document); // Updates all .ttab elements
-    // Unified render call
-    renderTasks();
-  }
-
-  function buildTasksHtml() {
-    let tasks;
-    
-    if (taskFilter === 'execution') {
-      // Combine tasks (active/todo) + pending queue items into one view
-      tasks = allTasks.filter(t => {
-        return t.col === 'active' || t.col === 'progress' || t.col === 'todo' || t.col === 'queue';
-      });
-      // Add pending queue items as pseudo-tasks
-      const pendingQueue = queueItems.filter(i => !i.done).map(i => ({
-        id: `q-${i.id}`, title: i.text, col: 'queued', _isQueueItem: true, _queueId: i.id,
-        start_date: i.start_date, priority: false, brain: null, tag: null
-      }));
-      tasks = tasks.concat(pendingQueue);
-      // Sort: active first, then queued, then todo
-      const colOrder = { active: 0, progress: 0, queued: 1, todo: 2, queue: 2 };
-      tasks.sort((a, b) => {
-        const aOrder = colOrder[a.col] ?? 3, bOrder = colOrder[b.col] ?? 3;
-        if (aOrder !== bOrder) return aOrder - bOrder;
-        if (a.priority !== b.priority) return (b.priority ? 1 : 0) - (a.priority ? 1 : 0);
-        return 0;
-      });
-    } else if (taskFilter === 'all') {
-      tasks = allTasks;
-    } else {
-      tasks = allTasks.filter(t => {
-        if (taskFilter === 'blocked') return t.col === 'blocked' || t.col === 'failed' || t.col === 'rejected';
-        return t.col === taskFilter;
-      });
-      // Sort done column by updated_at DESC (most recent first)
-      if (taskFilter === 'done') {
-        tasks.sort((a, b) => {
-          const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
-          const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
-          return bTime - aTime; // DESC order
-        });
-      }
-    }
-    
-    return tasks.slice(0, 50).map(t => {
-      const brainBadge = t.brain && t.brain !== 'big' 
-        ? `<span class="badge" style="background:rgba(153,51,255,0.15);color:var(--purple);border:1px solid var(--purple-dim);margin-left:6px;padding:2px 6px;font-size:10px;border-radius:3px">${escapeHtml(t.brain)}</span>`
-        : '';
-      const isQueue = t._isQueueItem;
-      const deleteAction = isQueue
-        ? `deleteQueueItem(${t._queueId})`
-        : `deleteTask('${t.id}')`;
-      const clickAction = isQueue ? '' : `onclick="openTaskDetail('${t.id}')"`;
-      return `
-      <div class="task-item ${t.priority ? 'priority' : ''}" style="display:flex;justify-content:space-between;align-items:flex-start;${isQueue ? '' : 'cursor:pointer'}" ${clickAction}>
-        <div style="flex:1">
-          <div class="task-title">
-            <span class="task-col ${t.col || 'todo'}">${COL_DISPLAY[t.col] || t.col || 'todo'}</span>
-            ${escapeHtml(t.title || t.name || 'Untitled')}${brainBadge}
-          </div>
-          ${t.tag ? `<div class="task-meta">${escapeHtml(t.tag)}</div>` : ''}
-          ${t.start_date ? `<div class="task-meta" style="color:var(--accent)">📅 starts ${t.start_date}</div>` : ''}
-        </div>
-        <button onclick="event.stopPropagation();${deleteAction}" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0 8px;flex-shrink:0" title="Delete">×</button>
-      </div>`;
-    }).join('')
-      || `<div style="color:var(--text-muted);font-size:12px;padding:8px 0">No ${taskFilter} tasks</div>`;
-  }
-
-  async function deleteTask(id) {
-    if (!confirm(`Delete task ${id}?`)) return;
-    try {
-      await fetch(`/task/${id}`, { method: 'DELETE', headers: { 'x-write-password': localStorage.getItem('clea-pass') || '' } });
-      allTasks = allTasks.filter(t => t.id !== id);
-      renderTasks();
-      closeTaskDetail();
-    } catch (e) {
-      alert(`Failed to delete: ${e.message}`);
-    }
-  }
-
-  async function openTaskDetail(id) {
-    const t = allTasks.find(x => x.id === id);
-    if (!t) return;
-    let existing = document.getElementById('task-detail-modal');
-    if (existing) existing.remove();
-    // Fetch logs
-    let logsHtml = '<div style="color:var(--text-muted);font-size:12px">Loading logs...</div>';
-    const modal = document.createElement('div');
-    modal.id = 'task-detail-modal';
-    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;padding:16px';
-    modal.onclick = (e) => { if (e.target === modal) closeTaskDetail(); };
-    const renderModal = () => {
-      modal.innerHTML = `
-      <div style="background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:20px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-          <span style="color:var(--text-dim);font-size:11px;font-family:monospace">${escapeHtml(t.id)}</span>
-          <button onclick="closeTaskDetail()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px">×</button>
-        </div>
-        <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Title</label>
-        <input id="td-title" value="${escapeHtml(t.title || t.name || '')}" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font-size:13px" />
-        <div style="display:flex;gap:12px;margin-bottom:12px">
-          <div style="flex:1">
-            <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Status</label>
-            <select id="td-col" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:13px">
-              <option value="todo" ${t.col==='todo'?'selected':''}>Todo</option>
-              <option value="active" ${t.col==='active'?'selected':''}>In Progress</option>
-              <option value="blocked" ${t.col==='blocked'?'selected':''}>Blocked</option>
-              <option value="failed" ${t.col==='failed'?'selected':''}>Failed</option>
-              <option value="done" ${t.col==='done'?'selected':''}>Done</option>
-            </select>
-          </div>
-          <div style="flex:1">
-            <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Tag</label>
-            <input id="td-tag" value="${escapeHtml(t.tag || '')}" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:13px" />
-          </div>
-        </div>
-        <div style="display:flex;gap:12px;margin-bottom:12px">
-          <div style="flex:1">
-            <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Start Date</label>
-            <input id="td-start-date" type="date" value="${t.start_date || ''}" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:13px" />
-          </div>
-          <div style="flex:1">
-            <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Brain</label>
-            <select id="td-brain" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:13px">
-              <option value="big" ${t.brain === 'big' || !t.brain?'selected':''}>Big</option>
-              <option value="little" ${t.brain === 'little'?'selected':''}>Little</option>
-              <option value="opus" ${t.brain === 'opus'?'selected':''}>Opus</option>
-            </select>
-          </div>
-          <div style="flex:1">
-            <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Priority</label>
-            <select id="td-priority" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:13px">
-              <option value="false" ${!t.priority?'selected':''}>Normal</option>
-              <option value="true" ${t.priority?'selected':''}>⭐ Priority</option>
-            </select>
-          </div>
-        </div>
-        ${t.assigned_to ? `<div style="color:var(--text-dim);font-size:11px;margin-bottom:8px">Assigned to: <span style="color:var(--text)">${escapeHtml(t.assigned_to)}</span>${t.assigned_at ? ' · ' + new Date(t.assigned_at).toLocaleString() : ''}</div>` : ''}
-        <label style="color:var(--text-dim);font-size:11px;display:block;margin-bottom:4px">Meta / Notes</label>
-        <textarea id="td-meta" rows="4" style="width:100%;padding:8px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;margin-bottom:16px;font-size:13px;resize:vertical">${escapeHtml(t.meta || '')}</textarea>
-        <div style="display:flex;gap:8px;margin-bottom:16px">
-          <button onclick="saveTaskDetail('${t.id}')" style="flex:1;padding:10px;background:var(--cyan);color:var(--bg);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px">Save</button>
-          <button onclick="deleteTask('${t.id}')" style="padding:10px 16px;background:none;color:var(--red);border:1px solid var(--red);border-radius:6px;cursor:pointer;font-size:13px">Delete</button>
-        </div>
-        <div style="border-top:1px solid var(--border);padding-top:12px">
-          <div style="color:var(--text-dim);font-size:11px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">Activity Log</div>
-          ${logsHtml}
-        </div>
-      </div>`;
-    };
-    renderModal();
-    document.body.appendChild(modal);
-    // Fetch logs async
-    try {
-      const res = await fetch(`/task/${t.id}/logs`, { headers: { 'x-write-password': localStorage.getItem('clea-pass') || '' } });
-      if (res.ok) {
-        const logs = await res.json();
-        if (logs.length) {
-          logsHtml = logs.map(l => `<div style="margin-bottom:8px;font-size:12px"><span style="color:var(--text-dim)">${new Date(l.created_at).toLocaleString()}</span><div style="color:var(--text);margin-top:2px">${escapeHtml(l.message)}</div></div>`).join('');
-        } else {
-          logsHtml = '<div style="color:var(--text-muted);font-size:12px">No log entries yet.</div>';
-        }
-      } else {
-        logsHtml = '<div style="color:var(--text-muted);font-size:12px">Could not load logs.</div>';
-      }
-      renderModal();
-    } catch(e) { /* leave loading state */ }
-  }
-
-  function closeTaskDetail() {
-    const m = document.getElementById('task-detail-modal');
-    if (m) m.remove();
-  }
-
-  async function saveTaskDetail(id) {
-    const patch = {
-      text: document.getElementById('td-title').value,
-      col: document.getElementById('td-col').value,
-      tag: document.getElementById('td-tag').value || null,
-      start_date: document.getElementById('td-start-date').value || null,
-      meta: document.getElementById('td-meta').value || null,
-      brain: document.getElementById('td-brain').value || 'big',
-      priority: document.getElementById('td-priority').value === 'true'
-    };
-    try {
-      const res = await fetch(`/task/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'x-write-password': localStorage.getItem('clea-pass') || '' },
-        body: JSON.stringify(patch)
-      });
-      if (!res.ok) throw new Error(await res.text());
-      // Update local state
-      const idx = allTasks.findIndex(t => t.id === id);
-      if (idx >= 0) {
-        allTasks[idx].title = patch.text;
-        allTasks[idx].col = patch.col;
-        allTasks[idx].tag = patch.tag;
-        allTasks[idx].start_date = patch.start_date;
-        allTasks[idx].meta = patch.meta;
-        allTasks[idx].brain = patch.brain;
-        allTasks[idx].priority = patch.priority;
-      }
-      renderTasks();
-      closeTaskDetail();
-    } catch (e) {
-      alert('Save failed: ' + e.message);
-    }
-  }
-
-  function renderTasks() {
-    const html = buildTasksHtml();
-    
-    // Desktop: update sidebar dashboard tasks content
-    const desktopContent = document.getElementById('tasks-content');
-    if (desktopContent) {
-      desktopContent.innerHTML = html;
-    }
-    
-    // Mobile: if panel is open and showing tasks, update it
-    const mobilePanel = document.getElementById('mobile-panel');
-    if (mobilePanel && mobilePanel.style.display !== 'none' && currentView === 'tasks') {
-      const tasksList = mobilePanel.querySelector('.tasks-list');
-      if (tasksList) {
-        tasksList.innerHTML = html;
-      }
-    }
-    
-    // Update tab counts and visibility (for both desktop and mobile)
-    updateTabCounts();
-  }
-
-  function updateTabCounts() {
-    // Count tasks per column (excluding 'queue')
-    const counts = {};
-    ['todo', 'active', 'blocked', 'done'].forEach(col => {
-      counts[col] = allTasks.filter(t => {
-        if (col === 'active') return t.col === 'active' || t.col === 'progress';
-        if (col === 'blocked') return t.col === 'blocked' || t.col === 'failed' || t.col === 'rejected';
-        return t.col === col;
-      }).length;
-    });
-
-    // Map display names
-    const colNames = { todo: 'Todo', active: 'In Progress', blocked: 'Blocked', done: 'Done' };
-    
-    // Update all tab buttons
-    document.querySelectorAll('.ttab').forEach(btn => {
-      const col = btn.dataset.col;
-      if (col === 'queue') return; // Skip queue tab
-      
-      const count = counts[col] || 0;
-      const name = colNames[col] || col;
-      
-      // Update button text with count
-      const newText = count > 0 ? `${name} (${count})` : name;
-      btn.textContent = newText;
-    });
-  }
-
-
-
-
-
-  // ── Queue ──────────────────────────────────────────────────────────────────
-  async function startWorkFlow() {
-    const btn = document.getElementById('start-work-btn');
-    const btnM = document.getElementById('start-work-btn-m');
-    
-    // Hide button and show spinner
-    if (btn) btn.style.display = 'none';
-    if (btnM) btnM.style.display = 'none';
-    
-    // Create and insert loading spinner
-    let spinner = document.getElementById('start-work-spinner');
-    if (!spinner) {
-      spinner = document.createElement('div');
-      spinner.id = 'start-work-spinner';
-      spinner.style.cssText = 'display:flex;align-items:center;gap:8px;padding:12px;color:var(--cyan);font-weight:600;font-size:13px;letter-spacing:0.05em';
-      // Insert next to button
-      if (btn && btn.parentNode) {
-        btn.parentNode.insertBefore(spinner, btn);
-      }
-    }
-    spinner.innerHTML = '<div style="display:inline-block;width:18px;height:18px;border:2px solid var(--cyan-dim);border-top:2px solid var(--cyan);border-radius:50%;animation:spin 0.8s linear infinite"></div>Working…';
-    spinner.style.display = 'flex';
-    
-    try {
-      // Step 1: Process queue (pick up tasks)
-      let res = await fetch('/api/admin/planner-trigger', { method: 'POST', headers: { 'x-write-password': localStorage.getItem('clea-pass') || '' } });
-      let data = await res.json();
-      
-      // Step 2: Trigger planner (plan work into tasks)
-      res = await fetch('/api/admin/trigger-planner', { method: 'POST' });
-      data = await res.json();
-      
-      // Load tasks — this is the state change that triggers button re-render
-      await loadTasks();
-      
-      // After state change (loadTasks), restore button
-      if (spinner) spinner.style.display = 'none';
-      if (btn) btn.style.display = 'block';
-      if (btnM) btnM.style.display = 'block';
-    } catch (err) {
-      console.error(err);
-      // On error, restore button
-      if (spinner) spinner.style.display = 'none';
-      if (btn) btn.style.display = 'block';
-      if (btnM) btnM.style.display = 'block';
-    }
-  }
-
-  async function triggerPlanner() {
-    // Consolidates triggerPlanner and triggerPlannerMobile — updates both desktop and mobile buttons
-    const btnIds = ['run-now-btn', 'run-now-btn-m'];
-    btnIds.forEach(btnId => {
-      const btn = document.getElementById(btnId);
-      if (btn) { btn.textContent = 'Queuing…'; btn.disabled = true; }
-    });
-    try {
-      const r = await fetch('/api/admin/trigger-planner', { method: 'POST' });
-      const d = await r.json();
-      btnIds.forEach(btnId => {
-        const btn = document.getElementById(btnId);
-        if (btn) { btn.textContent = d.ok ? '✓ Queued' : 'Error'; btn.style.color = d.ok ? 'var(--green)' : 'red'; }
-      });
-      setTimeout(() => {
-        btnIds.forEach(btnId => {
-          const btn = document.getElementById(btnId);
-          if (btn) { btn.textContent = '📋 Plan Work Into Tasks'; btn.disabled = false; btn.style.color = 'var(--cyan)'; }
-        });
-      }, 4000);
-    } catch {
-      btnIds.forEach(btnId => {
-        const btn = document.getElementById(btnId);
-        if (btn) { btn.textContent = 'Error'; btn.disabled = false; }
-      });
-    }
-  }
-
-  let queueItems = [];
-
-  async function loadQueue() {
-    try {
-      const res = await fetch('/api/queue');
-      if (!res.ok) return;
-      queueItems = await res.json();
-      renderQueue();
-      updateQueueCountdown();
-    } catch {}
-  }
-
-  function updateQueueCountdown() {
-    // Queue cron runs every 2 hours
-    const now = Date.now();
-    const anchorMs = 1772915397706; // cron anchor timestamp
-    const intervalMs = 2 * 60 * 60 * 1000;
-    const elapsed = (now - anchorMs) % intervalMs;
-    const minutesUntil = Math.floor((intervalMs - elapsed) / 60000);
-    const h = Math.floor(minutesUntil / 60), m = minutesUntil % 60;
-    const timeStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
-    document.getElementById('queue-next-run').textContent = `Next review: in ${timeStr} (2h cycle)`;
-  }
-
-  // Update countdown every minute
-  setInterval(updateQueueCountdown, 60000);
 
   function startVoiceQueue(inputId) {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {

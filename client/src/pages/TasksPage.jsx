@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchTasks, fetchQueue, fetchWorkStatus, triggerPlanner, addQueueItem } from '../api'
+import { fetchTasks, fetchQueue, fetchWorkStatus, processQueue, addQueueItem } from '../api'
 import TaskList from '../components/TaskList'
 import TaskDetail from '../components/TaskDetail'
 import QueueInput from '../components/QueueInput'
@@ -64,8 +64,11 @@ export default function TasksPage() {
   }
 
   const handleStartWork = async () => {
-    await triggerPlanner()
-    setTimeout(refresh, 2000)
+    const result = await processQueue()
+    await refresh()
+    if (result?.activeTask) {
+      setTab('execution')
+    }
   }
 
   const handleQueueAdd = async (text, startDate) => {
