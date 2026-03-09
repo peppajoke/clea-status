@@ -330,66 +330,6 @@
       color: var(--text-dim);
       margin-bottom: 14px;
     }
-    .node-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 13px;
-    }
-    .node-row:last-child { border-bottom: none; }
-    .node-name { font-weight: 500; }
-    .badge {
-      font-size: 10px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      padding: 2px 8px;
-      border-radius: 20px;
-      font-family: 'Cinzel', serif;
-    }
-    .stale-time { font-size: 11px; color: var(--text-muted); margin-left: 8px; }
-
-    .task-item {
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-      font-size: 12px;
-    }
-    .task-item:last-child { border-bottom: none; }
-    .task-title { color: var(--text); margin-bottom: 3px; }
-    .task-meta { color: var(--text-muted); font-size: 11px; }
-    .task-col {
-      display: inline-block;
-      font-size: 9px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      padding: 1px 6px;
-      border-radius: 10px;
-      margin-right: 6px;
-    }
-    .task-col.todo { background: rgba(120,120,160,0.2); color: var(--text-dim); }
-    .task-col.queued { background: rgba(153,51,255,0.15); color: var(--purple); }
-    .task-col.active { background: rgba(0,200,255,0.15); color: var(--cyan); }
-    .task-col.done { background: rgba(0,255,136,0.1); color: var(--green); }
-    .task-col.blocked { background: rgba(255,170,0,0.15); color: #ffaa00; }
-    .task-col.rejected { background: rgba(255,68,85,0.15); color: var(--red); }
-    .task-col.failed { background: rgba(255,68,85,0.15); color: var(--red); }
-    .task-col.rejected { background: rgba(255,170,0,0.15); color: #ffaa00; }
-    .task-item.priority {
-      background: rgba(255,68,85,0.08);
-      border: 1px solid var(--red);
-      border-radius: 6px;
-      padding: 8px 12px !important;
-      margin: 4px 0;
-      box-shadow: 0 0 12px rgba(255,68,85,0.2);
-    }
-    .task-item.priority .task-title::before {
-      content: '⚡ ';
-      color: var(--red);
-      font-weight: 700;
-      margin-right: 4px;
-    }
-
     .d-label {
       font-family: 'Cinzel', serif;
       font-size: 10px;
@@ -400,36 +340,11 @@
       margin-bottom: 12px;
     }
 
-    /* ── Queue ── */
-    .queue-item {
-      display: flex; align-items: flex-start; gap: 10px;
-      padding: 9px 0;
-      border-bottom: 1px solid var(--border);
-    }
-    .queue-item:last-child { border-bottom: none; }
-    .queue-check {
-      width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px;
-      accent-color: var(--cyan); cursor: pointer;
-    }
-    .queue-text {
-      flex: 1; font-size: 13px; line-height: 1.4; color: var(--text);
-      word-break: break-word;
-    }
-    .queue-text.done { text-decoration: line-through; color: var(--text-muted); }
-    .queue-del {
-      background: none; border: none; color: var(--text-muted); cursor: pointer;
-      font-size: 14px; padding: 0 2px; line-height: 1; opacity: 0.5;
-      flex-shrink: 0;
-    }
-    .queue-del:hover { opacity: 1; color: var(--red); }
-    #queue-input:focus { border-color: var(--cyan); }
-
     /* ── Link cards ── */
     .link-group { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
     .link-card {
       display: flex; align-items: center; gap: 12px;
       padding: 10px 12px;
-      background: var(--bg3);
       border: 1px solid var(--border);
       border-radius: 6px;
       text-decoration: none;
@@ -440,43 +355,6 @@
     .lc-icon { font-size: 18px; flex-shrink: 0; width: 24px; text-align: center; }
     .lc-title { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.3; }
     .lc-desc  { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-
-    .ttab {
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      color: var(--text-muted);
-      font-family: 'Cinzel', serif;
-      font-size: 10px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      padding: 10px 20px;
-      cursor: pointer;
-      transition: all 0.15s;
-      margin-bottom: -1px;
-      white-space: nowrap;
-    }
-    .ttab:hover { color: var(--text); }
-    .ttab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
-
-    /* model picker */
-    .model-opt {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      width: 100%;
-      padding: 12px 14px;
-      background: var(--card);
-      border: 1px solid var(--border2);
-      border-radius: 2px;
-      cursor: pointer;
-      text-align: left;
-      transition: all 0.15s;
-    }
-    .model-opt:hover { border-color: var(--cyan-dim); }
-    .model-opt.selected { border-color: var(--cyan); background: rgba(0,200,255,0.06); }
-    .model-name { font-family: 'Cinzel', serif; font-size: 12px; color: var(--text); letter-spacing: 0.05em; }
-    .model-desc { font-size: 11px; color: var(--text-muted); }
 
     /* ── Art nouveau corner ornaments ── */
     .ornament {
@@ -492,7 +370,7 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    /* ── Landing overlay (shown before first message) ── */
+    /* ── Landing overlay ── */
     #landing {
       position: absolute;
       inset: 0;
@@ -530,7 +408,6 @@
       animation: pulse 2.5s infinite;
     }
     @keyframes pulse { 0%,100%{opacity:0.4} 50%{opacity:1} }
-    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
 
     /* ── Mobile bottom nav ── */
     #mobile-nav {
@@ -568,63 +445,8 @@
     }
     .mnav-item .micon { font-size: 18px; line-height: 1; }
     .mnav-item.active { color: var(--cyan); }
-    .mnav-item.hidden-nav { display: none; }
 
-    /* Mobile overlay panel */
-    #mobile-panel {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: var(--bg2);
-      z-index: 50;
-      overflow-y: auto;
-      padding-bottom: 80px;
-    }
-    #mobile-panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-    }
-    #mobile-panel-title {
-      font-family: 'Cinzel', serif;
-      font-size: 12px;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--text-dim);
-      flex: 1;
-    }
-    #mobile-panel-status {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 11px;
-      color: var(--text-dim);
-      margin-right: 8px;
-      white-space: nowrap;
-    }
-    #mobile-panel-status-dot {
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 8px var(--green);
-      flex-shrink: 0;
-    }
-    #mobile-panel-close {
-      background: none;
-      border: none;
-      color: var(--text-muted);
-      font-size: 20px;
-      cursor: pointer;
-      padding: 4px;
-      line-height: 1;
-      flex-shrink: 0;
-    }
-
-    /* ── Mobile identity header (replaces sidebar on small screens) ── */
+    /* ── Mobile identity header ── */
     #mobile-identity {
       display: none;
       align-items: center;
@@ -669,6 +491,42 @@
       transition: background 0.4s, box-shadow 0.4s;
     }
 
+    /* ── Mobile panel overlay ── */
+    #mobile-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg2);
+      z-index: 50;
+      overflow-y: auto;
+      padding-bottom: 80px;
+    }
+    #mobile-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    #mobile-panel-title {
+      font-family: 'Cinzel', serif;
+      font-size: 12px;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      flex: 1;
+    }
+    #mobile-panel-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
     /* responsive */
     @media (max-width: 768px) {
       #app { grid-template-columns: 1fr; }
@@ -677,9 +535,7 @@
       #app.dashboard-open #dashboard-panel { display: none; }
       #mobile-nav { display: flex; }
       #mobile-identity { display: flex; }
-      /* always show all nav tabs — lock content, not navigation */
-      .mnav-item.hidden-nav { display: flex; }
-      #chat-header { display: none; } /* replaced by mobile-identity */
+      #chat-header { display: none; }
       #chat-messages {
         padding: 16px;
         padding-bottom: 16px;
@@ -704,7 +560,6 @@
       #landing p { font-size: 13px; }
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/cronstrue@2.28.0/dist/cronstrue.min.js"></script>
 </head>
 <body>
 
@@ -752,7 +607,6 @@
 
   <!-- Chat -->
   <main id="chat-panel">
-    <!-- Mobile only: compact identity bar (replaces hidden sidebar) -->
     <div id="mobile-identity">
       <img id="mobile-portrait" src="/static/clea.png" alt="Clea" />
       <div>
@@ -762,7 +616,6 @@
     </div>
     <div id="chat-header"></div>
     <div id="chat-messages">
-      <!-- landing state -->
       <div id="landing">
         <h2>Clea</h2>
         <p>Paintress. Agent. Perpetually unimpressed.<br/>Ask me anything.</p>
@@ -788,7 +641,7 @@
     </div>
   </main>
 
-  <!-- Dashboard panel -->
+  <!-- Dashboard panel (links view) -->
   <aside id="dashboard-panel">
     <div id="view-links" class="d-view" style="display:none">
       <div class="d-section" style="padding-bottom:0">
@@ -833,7 +686,6 @@
         </div>
       </div>
     </div>
-
   </aside>
 </div>
 
@@ -845,26 +697,15 @@
   <button class="mnav-item" data-view="links" onclick="setView('links')">
     <span class="micon">◎</span>Links
   </button>
-
-  <button class="mnav-item hidden-nav" data-view="tasks" onclick="setView('tasks')">
+  <a class="mnav-item" href="/tasks" style="text-decoration:none;color:inherit">
     <span class="micon">◧</span>Tasks
-  </button>
-  <button class="mnav-item hidden-nav" onclick="location.href='/tasks/scheduler'" style="text-decoration:none;border:none;background:none;font:inherit;cursor:pointer;color:inherit">
-    <span class="micon">⏱</span>Scheduler
-  </button>
-  <button class="mnav-item hidden-nav" data-view="admin" onclick="setView('admin')">
-    <span class="micon">⚙</span>Admin
-  </button>
+  </a>
 </nav>
 
 <!-- Mobile full-screen panel -->
 <div id="mobile-panel">
   <div id="mobile-panel-header">
     <span id="mobile-panel-title">—</span>
-    <div id="mobile-panel-status" style="display:none">
-      <span id="mobile-panel-status-dot"></span>
-      <span id="mobile-panel-status-text">Idle</span>
-    </div>
     <button id="mobile-panel-close" onclick="setView('chat')">✕</button>
   </div>
   <div id="mobile-panel-body"></div>
@@ -873,13 +714,10 @@
 <script>
   let authenticated = false;
   let chatHistory = [];
-  let currentView = 'tasks';
-  let dashboardLoaded = false;
-  let loadTasksInProgress = false; // Prevent async race conditions
 
   // ── Check auth on load ──────────────────────────────────────────────────
   fetch('/api/auth/status').then(r => r.json()).then(d => {
-    if (d.authenticated) unlockDashboard(false);
+    if (d.authenticated) unlockDashboard();
   });
 
   // ── Work status polling (public, every 30s) ────────────────────────────
@@ -894,14 +732,13 @@
       const cls   = STATUS_CLASSES[d.status] || 'ws-nothing';
       const dotColor = DOT_COLORS[d.status] || 'var(--green)';
 
-      ['work-status-text', 'work-status-text-m', 'mobile-panel-status-text'].forEach(id => {
+      ['work-status-text', 'work-status-text-m'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
         el.textContent = label;
         el.className = cls;
       });
-      // update dot color
-      document.querySelectorAll('#status-dot, .mid-dot, #mobile-panel-status-dot').forEach(el => {
+      document.querySelectorAll('#status-dot, .mid-dot').forEach(el => {
         el.style.background = dotColor;
         el.style.boxShadow = `0 0 8px ${dotColor}`;
       });
@@ -912,30 +749,14 @@
 
   const isMobile = () => window.innerWidth <= 768;
 
-  function unlockDashboard(animate) {
+  function unlockDashboard() {
     authenticated = true;
-    document.getElementById('nav-admin').style.display = '';
-    document.getElementById('nav-queue').style.display = '';
     document.getElementById('queue-mode-row').style.display = 'block';
     document.getElementById('chat-panel').classList.add('with-queue-row');
-    document.querySelectorAll('.hidden-nav').forEach(el => el.classList.remove('hidden-nav'));
-    document.getElementById('app').classList.add('dashboard-open');
-    if (!dashboardLoaded) {
-          dashboardLoaded = true;
-    }
-    loadCurrentModel();
-    loadCurrentLittleBrainModel();
-      // Auto-refresh tasks every 30s
-    setInterval(loadTasks, 30000);
-    // Switch to tasks view immediately
-    setView('tasks');
   }
-
-  const VIEW_TITLES = { links: 'Links' };
 
   // ── View switching ──────────────────────────────────────────────────────
   function setView(view) {
-    // Update all nav items (sidebar + mobile)
     document.querySelectorAll('[data-view]').forEach(el => {
       el.classList.toggle('active', el.dataset.view === view);
     });
@@ -946,83 +767,20 @@
       return;
     }
 
-    // Dashboard views require auth — show lock screen if not authed
-    const isDashboardView = false; // React handles dashboard views
-    if (isDashboardView && !authenticated) {
-      if (isMobile()) {
-        const panel = document.getElementById('mobile-panel');
-        const body = document.getElementById('mobile-panel-body');
-        const title = document.getElementById('mobile-panel-title');
-        title.textContent = VIEW_TITLES[view] || view;
-        body.innerHTML = `<div style="padding:40px 24px;text-align:center;">
-          <div style="font-size:32px;margin-bottom:16px;">🔒</div>
-          <div style="font-family:'Cinzel',serif;font-size:13px;color:var(--text-dim);letter-spacing:0.1em;margin-bottom:12px;">RESTRICTED</div>
-          <p style="font-size:13px;color:var(--text-muted);line-height:1.7;">This area requires authentication.<br/>Say the passphrase in chat to unlock.</p>
-        </div>`;
-        panel.style.display = 'block';
-      }
-      return;
-    }
-
-    // Desktop: slide in dashboard panel
     if (!isMobile()) {
       document.getElementById('app').classList.add('dashboard-open');
       document.querySelectorAll('.d-view').forEach(el => el.style.display = 'none');
       const target = document.getElementById(`view-${view}`);
       if (target) target.style.display = '';
     } else {
-      // Mobile: full-screen overlay
       const panel = document.getElementById('mobile-panel');
       const body = document.getElementById('mobile-panel-body');
       const title = document.getElementById('mobile-panel-title');
-      const statusDisplay = document.getElementById('mobile-panel-status');
-      title.textContent = VIEW_TITLES[view] || view;
-      
-      // Show status display for tasks view
-      if (view === 'tasks') {
-        statusDisplay.style.display = 'flex';
-      } else {
-        statusDisplay.style.display = 'none';
-      }
-
-      if (view === 'tasks') {
-        // Tasks panel: unified layout for both desktop/mobile
-        body.innerHTML = `
-          <div style="padding:12px 16px 0">
-            <div style="margin-bottom:12px;display:flex;gap:8px">
-              <button id="start-work-btn-m" onclick="startWorkFlow()" style="flex:1;padding:12px;background:var(--cyan);color:var(--bg);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;letter-spacing:0.05em;text-transform:uppercase">Start Work</button>
-              <button onclick="loadTasks()" title="Refetch all tasks" style="padding:12px 16px;background:var(--border);color:var(--text);border:none;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;transition:all 0.15s" onmouseover="this.style.background='var(--border2)'" onmouseout="this.style.background='var(--border)'">🔄</button>
-            </div>
-            <div style="display:flex;gap:0;border-bottom:1px solid var(--border);margin:0 -16px 12px;padding:0 16px">
-              <button class="ttab active" data-col="execution" onclick="filterTasks('execution')">Execution Queue</button>
-              <button class="ttab" data-col="blocked" onclick="filterTasks('blocked')">Blocked</button>
-              <button class="ttab" data-col="rejected" onclick="filterTasks('rejected')">Rejected</button>
-              <button class="ttab" data-col="done" onclick="filterTasks('done')">Done</button>
-            </div>
-            <div class="tasks-list"></div>
-          </div>`;
-        // Sync active tab state and populate content
-        body.querySelectorAll('.ttab').forEach(el => el.classList.toggle('active', el.dataset.col === taskFilter));
-        // Use renderTasks to populate the mobile panel tasks list
-        const mobileTasksList = body.querySelector('.tasks-list');
-        if (mobileTasksList) {
-          mobileTasksList.innerHTML = buildTasksHtml();
-        }
-      } else {
-        // Other views: clone desktop panel content
-        const source = document.getElementById(`view-${view}`);
-        if (source) body.innerHTML = source.innerHTML;
-
-        // Re-wire admin buttons
-        panel.querySelectorAll('.admin-btn').forEach(btn => {
-          const orig = btn.getAttribute('onclick');
-          if (orig) btn.setAttribute('onclick', orig);
-        });
-      }
+      title.textContent = view.charAt(0).toUpperCase() + view.slice(1);
+      const source = document.getElementById(`view-${view}`);
+      if (source) body.innerHTML = source.innerHTML;
       panel.style.display = 'block';
     }
-    
-    currentView = view;
   }
 
   // ── Queue mode toggle ───────────────────────────────────────────────────
@@ -1058,7 +816,6 @@
     if (!text) return;
     input.value = ''; input.style.height = '';
 
-    // Show inline system message
     const msgs = document.getElementById('chat-messages');
     const div = document.createElement('div');
     div.className = 'msg assistant';
@@ -1068,29 +825,15 @@
 
     try {
       const startDate = document.getElementById('queue-start-date')?.value || null;
-      const res = await fetch('/api/queue', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text, start_date: startDate}) });
-      const item = await res.json();
-      
-      // Add the new item to the queue immediately
-      if (item.id) {
-        queueItems.push(item);
-        renderQueue();
-      }
-      
-      // Open the queue screen immediately
-      setView('tasks');
-      filterTasks('queue');
-      
+      await fetch('/api/queue', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text, start_date: startDate}) });
       await fetch('/api/admin/trigger-planner', { method: 'POST' });
-      div.querySelector('.msg-bubble').innerHTML = `✓ Queued — showing in queue. Will pick up next cycle.`;
-      setTimeout(loadTasks, 8000);
-      setTimeout(loadTasks, 20000);
+      div.querySelector('.msg-bubble').innerHTML = `✓ Queued. <a href="/tasks" style="color:var(--cyan)">View tasks →</a>`;
     } catch {
       div.querySelector('.msg-bubble').innerHTML = `Failed to queue. Try again.`;
     }
   }
 
-  // ── Message handling ────────────────────────────────────────────────────
+  // ── Chat ────────────────────────────────────────────────────────────────
   function handleKey(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -1132,7 +875,7 @@
       chatHistory.push({ role: 'assistant', content: reply });
 
       if (data.authenticated && !authenticated) {
-        setTimeout(() => unlockDashboard(true), 600);
+        setTimeout(() => unlockDashboard(), 600);
       }
     } catch (err) {
       typing.remove();
@@ -1173,22 +916,6 @@
     return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>');
   }
 
-  function startVoiceQueue(inputId) {
-    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-      alert('Speech recognition not supported in this browser');
-      return;
-    }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SR();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onresult = (e) => {
-      document.getElementById(inputId).value = e.results[0][0].transcript;
-    };
-    recognition.start();
-  }
-
   function startVoiceChat() {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
       alert('Speech recognition not supported in this browser');
@@ -1217,70 +944,6 @@
     };
     recognition.start();
   }
-
-  function renderQueue() {
-    const pending = queueItems.filter(i => !i.done);
-    const navQueue = document.getElementById('nav-queue');
-    if (navQueue) {
-      if (pending.length === 0) {
-        navQueue.innerHTML = '';
-      } else {
-        navQueue.innerHTML = `<div class="nav-item" data-view="queue" onclick="setView('tasks'); filterTasks('queue')">
-          <span class="icon">⚡</span> Queue <span style="color:var(--cyan);font-weight:600">(${pending.length})</span>
-        </div>`;
-      }
-    }
-  }
-
-  async function addQueueItem() {
-    const input = document.getElementById('queue-input');
-    const text  = input.value.trim();
-    if (!text) return;
-    const status = document.getElementById('queue-status');
-    input.value = '';
-    status.textContent = 'Adding…';
-    try {
-      const res = await fetch('/api/queue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-      });
-      const item = await res.json();
-      if (item.id) {
-        queueItems.push(item);
-        renderQueue();
-        status.textContent = '✓ Added';
-        setTimeout(() => { status.textContent = ''; }, 2000);
-      } else {
-        status.textContent = 'Failed to add';
-      }
-    } catch {
-      status.textContent = 'Error — try again';
-    }
-  }
-
-  async function toggleQueueItem(id, done) {
-    try {
-      await fetch(`/api/queue/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ done })
-      });
-      const item = queueItems.find(i => i.id === id);
-      if (item) { item.done = done; renderQueue(); }
-    } catch {}
-  }
-
-  async function deleteQueueItem(id) {
-    try {
-      await fetch(`/api/queue/${id}`, { method: 'DELETE' });
-      queueItems = queueItems.filter(i => i.id !== id);
-      renderQueue();
-    } catch {}
-  }
-
-
-
 </script>
 </body>
 </html>
