@@ -71,6 +71,41 @@ function IdeaCard({ idea, onApprove, onDeny, onDelete, isPending }) {
   )
 }
 
+function AddIdeaInput({ onAdded }) {
+  const [text, setText] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async () => {
+    if (!text.trim()) return
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/shirt-ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.trim().toUpperCase(), source: 'jack (manual)', category: 'manual' })
+      })
+      if (res.ok) { setText(''); onAdded() }
+    } finally { setSubmitting(false) }
+  }
+
+  return (
+    <div className="add-idea">
+      <input
+        className="add-idea-input"
+        type="text"
+        placeholder="Type a shirt idea..."
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && submit()}
+        disabled={submitting}
+      />
+      <button className="idea-btn approve add-idea-btn" onClick={submit} disabled={!text.trim() || submitting}>
+        {submitting ? '...' : '+ Add'}
+      </button>
+    </div>
+  )
+}
+
 export default function IdeasPage() {
   const [ideas, setIdeas] = useState([])
   const [tab, setTab] = useState('pending')
@@ -129,6 +164,8 @@ export default function IdeasPage() {
           </button>
         )}
       </div>
+
+      <AddIdeaInput onAdded={() => { load(); loadCounts() }} />
 
       <div className="ideas-tabs">
         {TABS.map(t => (

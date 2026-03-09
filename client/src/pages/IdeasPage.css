@@ -16,6 +16,41 @@
   margin: 0;
 }
 
+.add-idea {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.add-idea-input {
+  flex: 1;
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  color: var(--text, #fff);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.add-idea-input:focus {
+  border-color: var(--cyan, #00bcd4);
+}
+
+.add-idea-input::placeholder {
+  text-transform: none;
+  font-weight: 400;
+  color: var(--text-muted, #555);
+}
+
+.add-idea-btn {
+  white-space: nowrap;
+}
+
 .ideas-tabs {
   display: flex;
   gap: 0.5rem;
