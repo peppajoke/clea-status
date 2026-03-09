@@ -283,7 +283,7 @@ async function evaluateAndExecutePrompts() {
               if (curlRes) console.log(`[prompt-scheduler] curl ${method} ${url} → ${curlRes.status}`);
             } else {
               // Default: send LLM prompt
-              const response = await fetch('http://localhost:3000/api/prompt-execute', {
+              const response = await fetch(`http://localhost:${port}/api/prompt-execute`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
