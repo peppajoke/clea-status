@@ -109,6 +109,25 @@
   border-radius: 4px;
 }
 
+.idea-description {
+  margin: 0.4rem 0;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg, #111);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #ccc);
+  line-height: 1.4;
+}
+
+.idea-description p {
+  margin: 0;
+}
+
+.idea-no-desc {
+  color: var(--text-muted, #555);
+  font-style: italic;
+}
+
 .idea-notes {
   font-size: 0.85rem;
   color: var(--text-muted, #888);

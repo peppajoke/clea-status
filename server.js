@@ -1380,10 +1380,10 @@ app.post('/api/shirt-ideas', requireAccess, async (req, res) => {
     for (const item of items) {
       if (!item.text) continue;
       const { rows } = await pool.query(
-        `INSERT INTO shirt_ideas (text, source, category, product_types, notes)
-         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        `INSERT INTO shirt_ideas (text, source, category, product_types, notes, description)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
         [item.text, item.source || null, item.category || null,
-         item.product_types || ['t-shirt'], item.notes || null]
+         item.product_types || ['t-shirt'], item.notes || null, item.description || null]
       );
       created.push(rows[0]);
     }
@@ -1409,7 +1409,9 @@ app.post('/api/shirt-ideas/:id/approve', requireAccess, async (req, res) => {
       try {
         const types = idea.product_types || ['t-shirt'];
         const productType = types.length === 1 ? types[0] : types;
-        const body = JSON.stringify({ text: idea.text, productType });
+        const payload = { text: idea.text, productType };
+        if (idea.description) payload.description = idea.description;
+        const body = JSON.stringify(payload);
         const url = new URL('/api/manage/products/text', studioBase);
 
         const result = await new Promise((resolve, reject) => {

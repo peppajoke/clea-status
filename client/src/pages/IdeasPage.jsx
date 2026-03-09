@@ -15,6 +15,7 @@ function timeAgo(date) {
 
 function IdeaCard({ idea, onApprove, onDeny, onDelete, isPending }) {
   const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const act = async (action) => {
     setLoading(true)
@@ -24,15 +25,26 @@ function IdeaCard({ idea, onApprove, onDeny, onDelete, isPending }) {
 
   return (
     <div className={`idea-card idea-${idea.status}`}>
-      <div className="idea-text">{idea.text}</div>
-      <div className="idea-meta">
-        {idea.source && <span className="idea-source">{idea.source}</span>}
-        {idea.category && <span className="idea-category">{idea.category}</span>}
-        <span className="idea-time">{timeAgo(idea.created_at)}</span>
-        {idea.product_types?.length > 0 && (
-          <span className="idea-types">{idea.product_types.join(', ')}</span>
-        )}
+      <div className="idea-top" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
+        <div className="idea-text">{idea.text}</div>
+        <div className="idea-meta">
+          {idea.source && <span className="idea-source">{idea.source}</span>}
+          {idea.category && <span className="idea-category">{idea.category}</span>}
+          <span className="idea-time">{timeAgo(idea.created_at)}</span>
+          {idea.product_types?.length > 0 && (
+            <span className="idea-types">{idea.product_types.join(', ')}</span>
+          )}
+        </div>
       </div>
+      {(expanded || idea.description) && (
+        <div className="idea-description">
+          {idea.description ? (
+            <p>{idea.description}</p>
+          ) : (
+            <p className="idea-no-desc">No description yet</p>
+          )}
+        </div>
+      )}
       {idea.notes && <div className="idea-notes">{idea.notes}</div>}
       <div className="idea-actions">
         {isPending ? (
