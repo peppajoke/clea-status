@@ -1357,6 +1357,114 @@ app.post('/auth/verify', (req, res) => {
   return res.status(401).json({ ok: false, error: 'Wrong password' });
 });
 
+// ── Shirt Ideas ──────────────────────────────────────────────────────────────
+
+// List ideas (filterable by status)
+app.get('/api/shirt-ideas', requireAccess, async (req, res) => {
+  try {
+    const status = req.query.status;
+    let q = 'SELECT * FROM shirt_ideas';
+    const params = [];
+    if (status) { q += ' WHERE status = $1'; params.push(status); }
+    q += ' ORDER BY created_at DESC';
+    const { rows } = await pool.query(q, params);
+    res.json(rows);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Add ideas (single or batch)
+app.post('/api/shirt-ideas', requireAccess, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body) ? req.body : [req.body];
+    const created = [];
+    for (const item of items) {
+      if (!item.text) continue;
+      const { rows } = await pool.query(
+        `INSERT INTO shirt_ideas (text, source, category, product_types, notes)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [item.text, item.source || null, item.category || null,
+         item.product_types || ['t-shirt'], item.notes || null]
+      );
+      created.push(rows[0]);
+    }
+    res.status(201).json(created.length === 1 ? created[0] : created);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Approve idea → auto-create product via STUDIO API
+app.post('/api/shirt-ideas/:id/approve', requireAccess, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `UPDATE shirt_ideas SET status = 'approved', reviewed_at = NOW()
+       WHERE id = $1 AND status = 'pending' RETURNING *`, [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Idea not found or already reviewed' });
+    const idea = rows[0];
+
+    // Auto-create product via STUDIO API
+    const studioKey = process.env.STUDIO_API_KEY;
+    const studioBase = process.env.STUDIO_BASE_URL || 'https://cleashop.replit.app';
+    if (studioKey) {
+      try {
+        const types = idea.product_types || ['t-shirt'];
+        const productType = types.length === 1 ? types[0] : types;
+        const body = JSON.stringify({ text: idea.text, productType });
+        const url = new URL('/api/manage/products/text', studioBase);
+
+        const result = await new Promise((resolve, reject) => {
+          const req2 = https.request(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': studioKey }
+          }, (resp) => {
+            let data = '';
+            resp.on('data', c => data += c);
+            resp.on('end', () => {
+              try { resolve(JSON.parse(data)); }
+              catch { resolve({ raw: data }); }
+            });
+          });
+          req2.on('error', reject);
+          req2.write(body);
+          req2.end();
+        });
+
+        const productId = result.id || result.products?.[0]?.id;
+        if (productId) {
+          await pool.query(`UPDATE shirt_ideas SET status = 'created', product_id = $1 WHERE id = $2`,
+            [productId, id]);
+          idea.status = 'created';
+          idea.product_id = productId;
+        }
+        idea.studio_result = result;
+      } catch (studioErr) {
+        idea.studio_error = studioErr.message;
+      }
+    }
+    res.json(idea);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Deny idea
+app.post('/api/shirt-ideas/:id/deny', requireAccess, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE shirt_ideas SET status = 'denied', reviewed_at = NOW()
+       WHERE id = $1 AND status = 'pending' RETURNING *`, [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Idea not found or already reviewed' });
+    res.json(rows[0]);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Delete idea
+app.delete('/api/shirt-ideas/:id', requireAccess, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM shirt_ideas WHERE id = $1', [req.params.id]);
+    res.json({ deleted: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ── SPA ─────────────────────────────────────────────────────────────────────
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
