@@ -315,7 +315,7 @@ async function evaluateAndExecutePrompts() {
           anyExecuted = true;
         } else {
           // Update next_run if not already set correctly
-          if (!schedule.next_run || new Date(schedule.next_run) !== nextRun) {
+          if (!schedule.next_run || new Date(schedule.next_run).getTime() !== nextRun.getTime()) {
             await pool.query(
               `UPDATE prompt_schedules SET next_run=$1, updated_at=NOW() WHERE id=$2`,
               [nextRun, schedule.id]
