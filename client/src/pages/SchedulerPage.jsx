@@ -35,11 +35,18 @@ function buildCron(freq, hour, dow) {
 
 function parseCron(expr) {
   const parts = expr.split(' ')
-  const hour = parseInt(parts[1]) || 9
+  const hourField = parts[1] || '*'
+  // Handle */N interval patterns
+  const intervalMatch = hourField.match(/^\*\/(\d+)$/)
+  if (hourField === '*') return { freq: 'hourly', hour: 9, dow: 1 }
+  if (intervalMatch) {
+    const n = parseInt(intervalMatch[1])
+    if (n === 2) return { freq: 'every2h', hour: 9, dow: 1 }
+    if (n === 6) return { freq: 'every6h', hour: 9, dow: 1 }
+    return { freq: `every${n}h`, hour: 9, dow: 1, interval: n }
+  }
+  const hour = parseInt(hourField) || 9
   const dow = parseInt(parts[4]) || 1
-  if (parts[1] === '*') return { freq: 'hourly', hour: 9, dow: 1 }
-  if (parts[1] === '*/2') return { freq: 'every2h', hour: 9, dow: 1 }
-  if (parts[1] === '*/6') return { freq: 'every6h', hour: 9, dow: 1 }
   if (parts[4] !== '*') return { freq: 'weekly', hour, dow }
   if (parts[3] !== '*' || parts[2] !== '*') return { freq: 'monthly', hour, dow: 1 }
   return { freq: 'daily', hour, dow: 1 }
@@ -153,8 +160,11 @@ export default function SchedulerPage() {
   }
 
   const scheduleLabel = (expr) => {
-    const { freq, hour, dow } = parseCron(expr)
+    const parsed = parseCron(expr)
+    const { freq, hour, dow, interval } = parsed
     const f = FREQUENCIES.find(x => x.value === freq)
+    // Handle generic */N interval patterns not in FREQUENCIES
+    if (!f && interval) return `Every ${interval} hours`
     if (!f?.hasHour) return f?.label || expr
     const h = HOURS[hour]?.label || hour
     if (freq === 'weekly') return `${DAYS[dow]} at ${h} ET`
