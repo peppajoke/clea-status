@@ -19,9 +19,9 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Model mapping from brain names to API model strings
 const MODEL_MAP = {
-  haiku: 'claude-haiku-4-20250414',
-  sonnet: 'claude-sonnet-4-20250514',
-  opus: 'claude-opus-4-0-20250514',
+  haiku: 'claude-3-5-haiku-20241022',
+  sonnet: 'claude-3-7-sonnet-20250219',
+  opus: 'claude-3-5-sonnet-20241022',
 };
 
 const SYSTEM_PROMPT = `You are a professional t-shirt graphic designer. Generate SVG markup for print-on-demand designs.
