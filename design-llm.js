@@ -83,9 +83,16 @@ Remember: NO <text> elements. Generate only the graphic/visual elements. Text wi
   // Validate it's SVG
   if (!svg.startsWith('<svg')) throw new Error('LLM did not return valid SVG');
 
-  // Ensure dimensions
-  if (!svg.includes('width="4500"')) {
-    svg = svg.replace(/<svg/, '<svg width="4500" height="5400" viewBox="0 0 4500 5400"');
+  // Ensure correct dimensions — replace existing width/height/viewBox or add them
+  svg = svg.replace(/width="[^"]*"/, 'width="4500"');
+  svg = svg.replace(/height="[^"]*"/, 'height="5400"');
+  if (!svg.includes('viewBox')) {
+    svg = svg.replace(/<svg/, '<svg viewBox="0 0 4500 5400"');
+  } else {
+    svg = svg.replace(/viewBox="[^"]*"/, 'viewBox="0 0 4500 5400"');
+  }
+  if (!svg.includes('width=')) {
+    svg = svg.replace(/<svg/, '<svg width="4500" height="5400"');
   }
 
   return svg;
