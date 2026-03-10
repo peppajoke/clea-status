@@ -83,6 +83,20 @@ Remember: NO <text> elements. Generate only the graphic/visual elements. Text wi
   // Validate it's SVG
   if (!svg.startsWith('<svg')) throw new Error('LLM did not return valid SVG');
 
+  // Sanitize: remove duplicate attributes (common LLM SVG issue)
+  // Matches opening tags and deduplicates attributes within each one
+  svg = svg.replace(/<([a-zA-Z][a-zA-Z0-9]*)((?:\s+[a-zA-Z][a-zA-Z0-9-]*(?::[a-zA-Z][a-zA-Z0-9-]*)?="[^"]*")*)\s*\/?>/g, (match, tag, attrs) => {
+    if (!attrs) return match;
+    const seen = new Set();
+    const cleanAttrs = attrs.replace(/\s+([a-zA-Z][a-zA-Z0-9-]*(?::[a-zA-Z][a-zA-Z0-9-]*)?)="[^"]*"/g, (attrMatch, attrName) => {
+      if (seen.has(attrName)) return ''; // drop duplicate
+      seen.add(attrName);
+      return attrMatch;
+    });
+    const selfClose = match.endsWith('/>') ? '/>' : '>';
+    return `<${tag}${cleanAttrs}${selfClose}`;
+  });
+
   // Ensure correct dimensions — replace existing width/height/viewBox or add them
   svg = svg.replace(/width="[^"]*"/, 'width="4500"');
   svg = svg.replace(/height="[^"]*"/, 'height="5400"');
