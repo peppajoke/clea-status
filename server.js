@@ -3,6 +3,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import fs from 'fs';
+import sharp from 'sharp';
 import https from 'https';
 import { fileURLToPath } from 'url';
 import pg from 'pg';
@@ -1366,7 +1367,6 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
 
-    const fs = require('fs');
     const designsDir = path.join(__dirname, 'public', 'designs');
     if (!fs.existsSync(designsDir)) fs.mkdirSync(designsDir, { recursive: true });
 
@@ -1496,7 +1496,6 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
     }
 
     // Convert SVG to PNG
-    const sharp = require('sharp');
     await sharp(Buffer.from(svg)).png().toFile(filepath);
 
     const imageUrl = '/designs/' + filename;
