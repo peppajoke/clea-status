@@ -1,8 +1,21 @@
 // design-generator.js — SVG design generator for t-shirt prints
 // Generates 4500x5400 transparent-background PNGs via sharp
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const W = 4500, H = 5400;
 const CX = W / 2, CY = H / 2;
+
+// Load Impact font as base64 for embedding in SVGs (ensures text renders on any server)
+let IMPACT_FONT_B64 = '';
+try {
+  IMPACT_FONT_B64 = fs.readFileSync(path.join(__dirname, 'impact-font-b64.txt'), 'utf-8').trim();
+} catch (e) {
+  console.warn('[design-generator] Could not load Impact font base64:', e.message);
+}
 
 // ── Color system ──────────────────────────────────────────────────────────────
 const COLOR_MAP = {
@@ -60,8 +73,20 @@ function svgOpen() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
 }
 
+function fontStyle() {
+  if (!IMPACT_FONT_B64) return '';
+  return `<style>
+    @font-face {
+      font-family: 'Impact';
+      src: url('data:font/ttf;base64,${IMPACT_FONT_B64}') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+    }
+  </style>`;
+}
+
 function defs(primary, accent, highlight) {
-  return `<defs>
+  return fontStyle() + `<defs>
     <linearGradient id="grad-v" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="${primary}"/>
       <stop offset="100%" stop-color="${accent}"/>
@@ -286,7 +311,7 @@ function styleMinimal(text, colors) {
       y: CY, fontSize,
       fill: colors.primary,
       letterSpacing: fontSize * 0.2,
-      fontFamily: 'Helvetica Neue, Helvetica, Arial, sans-serif',
+      fontFamily: 'Impact, Helvetica, sans-serif',
     }) +
     `<line x1="${CX - 600}" y1="${CY + fontSize * 0.8}" x2="${CX + 600}" y2="${CY + fontSize * 0.8}" stroke="${colors.primary}" stroke-width="4" opacity="0.4"/>` +
     '</svg>';
@@ -308,22 +333,22 @@ function styleRetroArcade(text, colors) {
   return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
     scanlines +
     // "INSERT COIN" style subtitle
-    `<text x="${CX}" y="${CY - fontSize * 1}" text-anchor="middle" font-family="Courier New, monospace" font-size="140" fill="${colors.accent}" letter-spacing="40" opacity="0.6">PRESS START</text>` +
+    `<text x="${CX}" y="${CY - fontSize * 1}" text-anchor="middle" font-family="Impact, sans-serif" font-size="140" fill="${colors.accent}" letter-spacing="40" opacity="0.6">PRESS START</text>` +
     // Main text with pixel-y shadow
     renderText(display, {
       y: CY + 50, fontSize,
       fill: '#000000',
-      fontFamily: 'Courier New, monospace',
+      fontFamily: 'Impact, sans-serif',
     }) +
     renderText(display, {
       y: CY, fontSize,
       fill: colors.primary,
       stroke: colors.accent, strokeWidth: fontSize * 0.03,
-      fontFamily: 'Courier New, monospace',
+      fontFamily: 'Impact, sans-serif',
       letterSpacing: fontSize * 0.08,
     }) +
     // Score-like decoration
-    `<text x="${CX}" y="${CY + fontSize * 1.1}" text-anchor="middle" font-family="Courier New, monospace" font-size="120" fill="${colors.accent}" letter-spacing="20" opacity="0.5">■ ■ ■ ■ ■</text>` +
+    `<text x="${CX}" y="${CY + fontSize * 1.1}" text-anchor="middle" font-family="Impact, sans-serif" font-size="120" fill="${colors.accent}" letter-spacing="20" opacity="0.5">■ ■ ■ ■ ■</text>` +
     '</svg>';
 }
 
