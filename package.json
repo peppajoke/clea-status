@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.96",
     "cookie-parser": "^1.4.6",
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.13.0",

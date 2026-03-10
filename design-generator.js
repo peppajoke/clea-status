@@ -1,8 +1,17 @@
-// design-generator.js — SVG design generator for t-shirt prints
-// Generates 4500x5400 transparent-background PNGs via sharp
+// design-generator.js — T-shirt design generator using @napi-rs/canvas
+// Renders text + graphics to 4500x5400 transparent-background PNGs
+// Uses canvas for text (guaranteed font rendering) instead of SVG <text>
 
+import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const W = 4500, H = 5400;
 const CX = W / 2, CY = H / 2;
+
+// Register Impact font
+GlobalFonts.registerFromPath(path.join(__dirname, 'fonts', 'Impact.ttf'), 'Impact');
 
 // ── Color system ──────────────────────────────────────────────────────────────
 const COLOR_MAP = {
@@ -12,7 +21,6 @@ const COLOR_MAP = {
   teal: '#40E0D0', magenta: '#FF00FF', crimson: '#DC143C', lime: '#AAFF00',
 };
 
-// Complementary palettes: [primary, accent, highlight]
 const PALETTES = {
   fire:    ['#FF2D00', '#FF8C00', '#FFD600'],
   ice:     ['#00BFFF', '#E0F7FF', '#FFFFFF'],
@@ -47,385 +55,28 @@ function detectPalette(prompt) {
   return null;
 }
 
+// Default palette rotation so plain prompts get interesting colors
+const DEFAULT_PALETTES = [
+  ['#FF2D55', '#FF6B35', '#FFFFFF'],   // hot red → orange
+  ['#0A84FF', '#64D2FF', '#FFFFFF'],   // electric blue → cyan
+  ['#BF5AF2', '#FF375F', '#FFFFFF'],   // purple → pink
+  ['#FFD60A', '#FF9F0A', '#FFFFFF'],   // gold → amber
+  ['#30D158', '#64D2FF', '#FFFFFF'],   // green → teal
+  ['#FF2D55', '#BF5AF2', '#FFFFFF'],   // red → purple
+];
+
 function getColors(prompt) {
   const explicit = detectColor(prompt);
   const palette = detectPalette(prompt);
   if (palette) return { primary: explicit || palette[0], accent: palette[1], highlight: palette[2] };
-  const pri = explicit || '#FFFFFF';
-  return { primary: pri, accent: pri, highlight: pri };
+  if (explicit) return { primary: explicit, accent: explicit, highlight: '#FFFFFF' };
+  // Hash prompt to pick a consistent default palette
+  const hash = Math.abs([...prompt].reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0));
+  const def = DEFAULT_PALETTES[hash % DEFAULT_PALETTES.length];
+  return { primary: def[0], accent: def[1], highlight: def[2] };
 }
 
-// ── SVG helpers ───────────────────────────────────────────────────────────────
-function svgOpen() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
-}
-
-function defs(primary, accent, highlight) {
-  return `<defs>
-    <linearGradient id="grad-v" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${primary}"/>
-      <stop offset="100%" stop-color="${accent}"/>
-    </linearGradient>
-    <linearGradient id="grad-h" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="${primary}"/>
-      <stop offset="50%" stop-color="${highlight}"/>
-      <stop offset="100%" stop-color="${accent}"/>
-    </linearGradient>
-    <linearGradient id="grad-d" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="${primary}"/>
-      <stop offset="100%" stop-color="${accent}"/>
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="130%" height="130%">
-      <feDropShadow dx="0" dy="30" stdDeviation="40" flood-color="${primary}" flood-opacity="0.4"/>
-    </filter>
-    <filter id="shadow-hard" x="-5%" y="-5%" width="115%" height="115%">
-      <feDropShadow dx="12" dy="12" stdDeviation="0" flood-color="#000000" flood-opacity="0.6"/>
-    </filter>
-    <filter id="glow" x="-20%" y="-20%" width="150%" height="150%">
-      <feGaussianBlur stdDeviation="60" result="blur"/>
-      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="glow-strong" x="-30%" y="-30%" width="170%" height="170%">
-      <feGaussianBlur stdDeviation="100" result="blur1"/>
-      <feGaussianBlur in="SourceGraphic" stdDeviation="30" result="blur2"/>
-      <feMerge><feMergeNode in="blur1"/><feMergeNode in="blur2"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-    <filter id="distress" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.04" numOctaves="4" seed="42" result="noise"/>
-      <feColorMatrix type="saturate" values="0" in="noise" result="bw"/>
-      <feComponentTransfer in="bw" result="thresh">
-        <feFuncA type="discrete" tableValues="0 0 0 0 1 1 1 1"/>
-      </feComponentTransfer>
-      <feComposite in="SourceGraphic" in2="thresh" operator="in"/>
-    </filter>
-  </defs>`;
-}
-
-function escapeXml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// ── Text rendering with effects ──────────────────────────────────────────────
-function calcFontSize(text, maxWidth, maxSize) {
-  // Rough estimate: each char ~0.6 * fontSize wide
-  const charWidth = 0.62;
-  const lines = text.split('\n');
-  const longestLine = Math.max(...lines.map(l => l.length));
-  const fitSize = Math.floor(maxWidth / (longestLine * charWidth));
-  return Math.min(fitSize, maxSize);
-}
-
-function renderText(text, { y, fontSize, fill, stroke, strokeWidth, filter, fontFamily, letterSpacing, opacity }) {
-  const font = fontFamily || 'Impact, Arial Black, sans-serif';
-  const lines = text.split('\n');
-  const lineHeight = fontSize * 1.15;
-  const startY = y - ((lines.length - 1) * lineHeight) / 2;
-
-  return lines.map((line, i) => {
-    const ly = startY + i * lineHeight;
-    const escaped = escapeXml(line);
-    const attrs = [
-      `x="${CX}" y="${ly}"`,
-      `text-anchor="middle" dominant-baseline="central"`,
-      `font-family="${font}"`,
-      `font-size="${fontSize}" font-weight="900"`,
-      letterSpacing ? `letter-spacing="${letterSpacing}"` : '',
-      filter ? `filter="url(#${filter})"` : '',
-      opacity ? `opacity="${opacity}"` : '',
-    ].filter(Boolean).join(' ');
-
-    let out = '';
-    // Stroke/outline layer
-    if (stroke && strokeWidth) {
-      out += `<text ${attrs} fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round">${escaped}</text>`;
-    }
-    // Fill layer
-    out += `<text ${attrs} fill="${fill}">${escaped}</text>`;
-    return out;
-  }).join('\n');
-}
-
-// ── Design styles ─────────────────────────────────────────────────────────────
-
-function styleBold(text, colors) {
-  // Big, punchy text with outline + shadow. The workhorse.
-  const words = text.toUpperCase();
-  const lines = splitText(words, 12);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.85, 700);
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Subtle accent line behind text
-    `<line x1="${CX - 1200}" y1="${CY + fontSize * 0.6}" x2="${CX + 1200}" y2="${CY + fontSize * 0.6}" stroke="${colors.primary}" stroke-width="6" opacity="0.2"/>` +
-    renderText(display, {
-      y: CY, fontSize,
-      fill: 'url(#grad-v)',
-      stroke: '#000000', strokeWidth: fontSize * 0.08,
-      filter: 'shadow',
-      letterSpacing: fontSize * 0.06,
-    }) +
-    '</svg>';
-}
-
-function styleNeon(text, colors) {
-  const words = text.toUpperCase();
-  const lines = splitText(words, 14);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.8, 600);
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Glow background text (blurred duplicate for neon bloom)
-    renderText(display, {
-      y: CY, fontSize: fontSize,
-      fill: colors.primary,
-      filter: 'glow-strong',
-      opacity: 0.6,
-    }) +
-    // Crisp foreground text
-    renderText(display, {
-      y: CY, fontSize,
-      fill: colors.highlight || '#FFFFFF',
-      stroke: colors.primary, strokeWidth: fontSize * 0.04,
-      letterSpacing: fontSize * 0.04,
-    }) +
-    '</svg>';
-}
-
-function styleDistressed(text, colors) {
-  const words = text.toUpperCase();
-  const lines = splitText(words, 12);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.85, 700);
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Distressed text
-    renderText(display, {
-      y: CY, fontSize,
-      fill: colors.primary,
-      stroke: '#000000', strokeWidth: fontSize * 0.06,
-      filter: 'distress',
-      letterSpacing: fontSize * 0.04,
-    }) +
-    '</svg>';
-}
-
-function styleVarsity(text, colors) {
-  // Collegiate / varsity style — arched text with thick outlines
-  const words = text.toUpperCase();
-  const lines = splitText(words, 10);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.8, 650);
-
-  // Double outline: dark outer, colored inner
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Stars/decorative elements
-    `<text x="${CX}" y="${CY - fontSize * 0.9}" text-anchor="middle" font-size="200" fill="${colors.accent}" opacity="0.5">★ ★ ★</text>` +
-    // Outer stroke
-    renderText(display, {
-      y: CY, fontSize,
-      fill: 'none',
-      stroke: '#000000', strokeWidth: fontSize * 0.14,
-    }) +
-    // Inner stroke (colored)
-    renderText(display, {
-      y: CY, fontSize,
-      fill: 'none',
-      stroke: colors.accent, strokeWidth: fontSize * 0.08,
-    }) +
-    // Fill
-    renderText(display, {
-      y: CY, fontSize,
-      fill: colors.primary,
-      letterSpacing: fontSize * 0.05,
-    }) +
-    // Underline decoration
-    `<line x1="${CX - fontSize * 1.5}" y1="${CY + fontSize * 0.7}" x2="${CX + fontSize * 1.5}" y2="${CY + fontSize * 0.7}" stroke="${colors.primary}" stroke-width="20"/>` +
-    `<line x1="${CX - fontSize * 1.3}" y1="${CY + fontSize * 0.82}" x2="${CX + fontSize * 1.3}" y2="${CY + fontSize * 0.82}" stroke="${colors.accent}" stroke-width="10"/>` +
-    '</svg>';
-}
-
-function styleStreet(text, colors) {
-  // Streetwear — hard shadow, tight spacing, aggressive
-  const words = text.toUpperCase();
-  const lines = splitText(words, 10);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.85, 750);
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Hard offset shadow
-    renderText(display, {
-      y: CY + 20, fontSize,
-      fill: colors.accent,
-      letterSpacing: fontSize * 0.02,
-      fontFamily: 'Impact, Arial Black, sans-serif',
-      opacity: 0.35,
-      filter: 'shadow-hard',
-    }) +
-    // Main text with outline
-    renderText(display, {
-      y: CY, fontSize,
-      fill: colors.primary,
-      stroke: '#000000', strokeWidth: fontSize * 0.06,
-      letterSpacing: fontSize * 0.02,
-      fontFamily: 'Impact, Arial Black, sans-serif',
-    }) +
-    '</svg>';
-}
-
-function styleMinimal(text, colors) {
-  // Clean, elegant, lots of whitespace
-  const words = text.toUpperCase();
-  const lines = splitText(words, 20);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.7, 450);
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Thin horizontal rules
-    `<line x1="${CX - 600}" y1="${CY - fontSize * 0.8}" x2="${CX + 600}" y2="${CY - fontSize * 0.8}" stroke="${colors.primary}" stroke-width="4" opacity="0.4"/>` +
-    renderText(display, {
-      y: CY, fontSize,
-      fill: colors.primary,
-      letterSpacing: fontSize * 0.2,
-      fontFamily: 'Impact, Helvetica, sans-serif',
-    }) +
-    `<line x1="${CX - 600}" y1="${CY + fontSize * 0.8}" x2="${CX + 600}" y2="${CY + fontSize * 0.8}" stroke="${colors.primary}" stroke-width="4" opacity="0.4"/>` +
-    '</svg>';
-}
-
-function styleRetroArcade(text, colors) {
-  // Pixel/arcade vibe — uses the pixel grid but much better
-  const words = text.toUpperCase();
-  const lines = splitText(words, 12);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.8, 550);
-
-  // Scanline effect
-  let scanlines = '';
-  for (let y = 0; y < H; y += 12) {
-    scanlines += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#000" stroke-width="3" opacity="0.15"/>`;
-  }
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    scanlines +
-    // "INSERT COIN" style subtitle
-    `<text x="${CX}" y="${CY - fontSize * 1}" text-anchor="middle" font-family="Impact, sans-serif" font-size="140" fill="${colors.accent}" letter-spacing="40" opacity="0.6">PRESS START</text>` +
-    // Main text with pixel-y shadow
-    renderText(display, {
-      y: CY + 50, fontSize,
-      fill: '#000000',
-      fontFamily: 'Impact, sans-serif',
-    }) +
-    renderText(display, {
-      y: CY, fontSize,
-      fill: colors.primary,
-      stroke: colors.accent, strokeWidth: fontSize * 0.03,
-      fontFamily: 'Impact, sans-serif',
-      letterSpacing: fontSize * 0.08,
-    }) +
-    // Score-like decoration
-    `<text x="${CX}" y="${CY + fontSize * 1.1}" text-anchor="middle" font-family="Impact, sans-serif" font-size="120" fill="${colors.accent}" letter-spacing="20" opacity="0.5">■ ■ ■ ■ ■</text>` +
-    '</svg>';
-}
-
-function styleWithIcon(text, colors, iconSvg) {
-  // Text + icon composition
-  const words = text.toUpperCase();
-  const lines = splitText(words, 14);
-  const display = lines.join('\n');
-  const fontSize = calcFontSize(display, W * 0.8, 550);
-  const textY = CY + 600;
-
-  return svgOpen() + defs(colors.primary, colors.accent, colors.highlight) +
-    // Icon centered in upper portion
-    `<g transform="translate(${CX}, ${CY - 500})" filter="url(#shadow)">` +
-    iconSvg +
-    '</g>' +
-    // Text below with outline
-    renderText(display, {
-      y: textY, fontSize,
-      fill: 'url(#grad-v)',
-      stroke: '#000000', strokeWidth: fontSize * 0.07,
-      letterSpacing: fontSize * 0.04,
-    }) +
-    '</svg>';
-}
-
-// ── Icons ─────────────────────────────────────────────────────────────────────
-function iconCrosshair(colors) {
-  return `
-    <circle cx="0" cy="0" r="700" fill="none" stroke="${colors.primary}" stroke-width="50" opacity="0.3"/>
-    <circle cx="0" cy="0" r="500" fill="none" stroke="${colors.primary}" stroke-width="60"/>
-    <circle cx="0" cy="0" r="250" fill="none" stroke="${colors.accent}" stroke-width="40"/>
-    <circle cx="0" cy="0" r="60" fill="${colors.primary}"/>
-    <line x1="-800" y1="0" x2="-300" y2="0" stroke="${colors.primary}" stroke-width="40"/>
-    <line x1="300" y1="0" x2="800" y2="0" stroke="${colors.primary}" stroke-width="40"/>
-    <line x1="0" y1="-800" x2="0" y2="-300" stroke="${colors.primary}" stroke-width="40"/>
-    <line x1="0" y1="300" x2="0" y2="800" stroke="${colors.primary}" stroke-width="40"/>`;
-}
-
-function iconSkull(colors) {
-  return `
-    <g transform="scale(2.2)">
-      <path d="M0,-200 C-180,-200 -280,-100 -280,50 C-280,150 -240,220 -160,260 L-160,320 L-80,320 L-60,280 L60,280 L80,320 L160,320 L160,260 C240,220 280,150 280,50 C280,-100 180,-200 0,-200 Z" fill="${colors.primary}" stroke="#000" stroke-width="12"/>
-      <ellipse cx="-100" cy="30" rx="55" ry="65" fill="#000"/>
-      <ellipse cx="100" cy="30" rx="55" ry="65" fill="#000"/>
-      <ellipse cx="-100" cy="30" rx="30" ry="40" fill="${colors.accent}" opacity="0.3"/>
-      <ellipse cx="100" cy="30" rx="30" ry="40" fill="${colors.accent}" opacity="0.3"/>
-      <path d="M-40,170 L0,200 L40,170" fill="none" stroke="#000" stroke-width="14" stroke-linecap="round"/>
-    </g>`;
-}
-
-function iconFlame(colors) {
-  return `
-    <g transform="scale(1.6)">
-      <path d="M0,-550 C-50,-480 -200,-300 -280,-100 C-350,80 -300,280 -200,400 C-100,520 -30,580 0,630 C30,580 100,520 200,400 C300,280 350,80 280,-100 C200,-300 50,-480 0,-550 Z" fill="${colors.primary}" opacity="0.9"/>
-      <path d="M0,-350 C-30,-300 -150,-180 -180,-30 C-210,100 -160,220 -100,300 C-40,370 -15,400 0,430 C15,400 40,370 100,300 C160,220 210,100 180,-30 C150,-180 30,-300 0,-350 Z" fill="${colors.accent}" opacity="0.85"/>
-      <path d="M0,-180 C-15,-150 -80,-70 -90,20 C-100,90 -70,150 -40,200 C-10,230 0,250 0,270 C0,250 10,230 40,200 C70,150 100,90 90,20 C80,-70 15,-150 0,-180 Z" fill="${colors.highlight}"/>
-    </g>`;
-}
-
-function iconLightning(colors) {
-  return `
-    <g transform="scale(1.4)">
-      <polygon points="-80,-650 -350,50 -50,50 80,650 350,-50 50,-50" fill="${colors.primary}" stroke="${colors.accent}" stroke-width="20" stroke-linejoin="round"/>
-      <polygon points="-50,-500 -250,30 -20,30 50,500 250,-30 20,-30" fill="${colors.accent}" opacity="0.3"/>
-    </g>`;
-}
-
-function iconShield(colors) {
-  return `
-    <g transform="scale(1.5)">
-      <path d="M0,-500 L-400,-300 L-350,250 L0,500 L350,250 L400,-300 Z" fill="none" stroke="${colors.primary}" stroke-width="50" stroke-linejoin="round"/>
-      <path d="M0,-350 L-260,-200 L-230,170 L0,350 L230,170 L260,-200 Z" fill="none" stroke="${colors.accent}" stroke-width="20" opacity="0.4"/>
-      <path d="M0,-200 L0,200 M-150,0 L150,0" stroke="${colors.primary}" stroke-width="30" stroke-linecap="round"/>
-    </g>`;
-}
-
-function iconSword(colors) {
-  return `
-    <g transform="scale(1.6) rotate(-30)">
-      <rect x="-18" y="-500" width="36" height="700" fill="${colors.primary}" rx="4"/>
-      <polygon points="0,-550 -50,-450 50,-450" fill="${colors.primary}"/>
-      <rect x="-120" y="180" width="240" height="40" rx="8" fill="${colors.accent}"/>
-      <rect x="-14" y="220" width="28" height="160" rx="6" fill="${colors.primary}"/>
-      <circle cx="0" cy="400" r="30" fill="${colors.accent}"/>
-    </g>`;
-}
-
-function iconController(colors) {
-  return `
-    <g transform="scale(2)">
-      <path d="M-220,-80 C-280,-80 -320,-40 -320,30 L-320,120 C-320,180 -280,220 -220,220 L-120,220 C-80,220 -40,180 -20,140 L20,140 C40,180 80,220 120,220 L220,220 C280,220 320,180 320,120 L320,30 C320,-40 280,-80 220,-80 Z" fill="${colors.primary}" stroke="#000" stroke-width="10"/>
-      <rect x="-180" y="-20" width="30" height="90" rx="4" fill="#000" opacity="0.5"/>
-      <rect x="-215" y="15" width="100" height="25" rx="4" fill="#000" opacity="0.5"/>
-      <circle cx="160" cy="0" r="18" fill="${colors.accent}"/>
-      <circle cx="200" cy="40" r="18" fill="${colors.accent}" opacity="0.6"/>
-      <circle cx="120" cy="40" r="18" fill="${colors.accent}" opacity="0.6"/>
-      <circle cx="160" cy="80" r="18" fill="${colors.accent}" opacity="0.6"/>
-    </g>`;
-}
-
-// ── Text splitting ────────────────────────────────────────────────────────────
+// ── Canvas helpers ────────────────────────────────────────────────────────────
 function splitText(text, maxCharsPerLine) {
   const words = text.split(/\s+/);
   if (words.length <= 1) return [text];
@@ -443,24 +94,312 @@ function splitText(text, maxCharsPerLine) {
   return lines;
 }
 
-// ── Style detection ───────────────────────────────────────────────────────────
+function calcFontSize(ctx, lines, maxWidth, maxSize, minSize = 120) {
+  let size = maxSize;
+  while (size > minSize) {
+    ctx.font = `900 ${size}px Impact`;
+    const widest = Math.max(...lines.map(l => ctx.measureText(l).width));
+    if (widest <= maxWidth) break;
+    size -= 20;
+  }
+  return size;
+}
+
+function drawText(ctx, text, x, y, { fontSize, fill, stroke, strokeWidth, letterSpacing }) {
+  ctx.font = `900 ${fontSize}px Impact`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (letterSpacing && letterSpacing > 0) {
+    // Draw with letter spacing manually
+    const chars = [...text];
+    const totalWidth = chars.reduce((sum, ch) => sum + ctx.measureText(ch).width + letterSpacing, -letterSpacing);
+    let cx = x - totalWidth / 2;
+    ctx.textAlign = 'left';
+    for (const ch of chars) {
+      const w = ctx.measureText(ch).width;
+      if (stroke && strokeWidth) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = strokeWidth;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(ch, cx, y);
+      }
+      ctx.fillStyle = fill;
+      ctx.fillText(ch, cx, y);
+      cx += w + letterSpacing;
+    }
+    ctx.textAlign = 'center';
+  } else {
+    if (stroke && strokeWidth) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = strokeWidth;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(text, x, y);
+    }
+    ctx.fillStyle = fill;
+    ctx.fillText(text, x, y);
+  }
+}
+
+function drawMultiline(ctx, lines, centerY, opts) {
+  const lineHeight = opts.fontSize * 1.15;
+  const startY = centerY - ((lines.length - 1) * lineHeight) / 2;
+  for (let i = 0; i < lines.length; i++) {
+    drawText(ctx, lines[i], CX, startY + i * lineHeight, opts);
+  }
+}
+
+// ── Gradient helpers ──────────────────────────────────────────────────────────
+function vertGradient(ctx, y1, y2, color1, color2) {
+  const g = ctx.createLinearGradient(0, y1, 0, y2);
+  g.addColorStop(0, color1);
+  g.addColorStop(1, color2);
+  return g;
+}
+
+// ── Icon drawing ──────────────────────────────────────────────────────────────
+function drawCrosshair(ctx, cx, cy, colors, scale = 1) {
+  const s = scale;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Outer ring
+  ctx.beginPath(); ctx.arc(0, 0, 700*s, 0, Math.PI*2);
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 50*s; ctx.globalAlpha = 0.3; ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Main ring
+  ctx.beginPath(); ctx.arc(0, 0, 500*s, 0, Math.PI*2);
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 60*s; ctx.stroke();
+
+  // Inner ring
+  ctx.beginPath(); ctx.arc(0, 0, 250*s, 0, Math.PI*2);
+  ctx.strokeStyle = colors.accent; ctx.lineWidth = 40*s; ctx.stroke();
+
+  // Center dot
+  ctx.beginPath(); ctx.arc(0, 0, 60*s, 0, Math.PI*2);
+  ctx.fillStyle = colors.primary; ctx.fill();
+
+  // Crosshairs
+  ctx.lineWidth = 40*s; ctx.strokeStyle = colors.primary;
+  for (const [x1, y1, x2, y2] of [[-800*s, 0, -300*s, 0], [300*s, 0, 800*s, 0], [0, -800*s, 0, -300*s], [0, 300*s, 0, 800*s]]) {
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawSkull(ctx, cx, cy, colors, scale = 1) {
+  const s = scale * 2.2;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Head
+  ctx.beginPath();
+  ctx.moveTo(0, -200*s);
+  ctx.bezierCurveTo(-180*s, -200*s, -280*s, -100*s, -280*s, 50*s);
+  ctx.bezierCurveTo(-280*s, 150*s, -240*s, 220*s, -160*s, 260*s);
+  ctx.lineTo(-160*s, 320*s); ctx.lineTo(-80*s, 320*s); ctx.lineTo(-60*s, 280*s);
+  ctx.lineTo(60*s, 280*s); ctx.lineTo(80*s, 320*s); ctx.lineTo(160*s, 320*s);
+  ctx.lineTo(160*s, 260*s);
+  ctx.bezierCurveTo(240*s, 220*s, 280*s, 150*s, 280*s, 50*s);
+  ctx.bezierCurveTo(280*s, -100*s, 180*s, -200*s, 0, -200*s);
+  ctx.closePath();
+  ctx.fillStyle = colors.primary; ctx.fill();
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 12*s; ctx.stroke();
+
+  // Eyes
+  for (const ex of [-100*s, 100*s]) {
+    ctx.beginPath(); ctx.ellipse(ex, 30*s, 55*s, 65*s, 0, 0, Math.PI*2);
+    ctx.fillStyle = '#000'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ex, 30*s, 30*s, 40*s, 0, 0, Math.PI*2);
+    ctx.fillStyle = colors.accent; ctx.globalAlpha = 0.3; ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Nose
+  ctx.beginPath(); ctx.moveTo(-40*s, 170*s); ctx.lineTo(0, 200*s); ctx.lineTo(40*s, 170*s);
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 14*s; ctx.lineCap = 'round'; ctx.stroke();
+  ctx.restore();
+}
+
+function drawFlame(ctx, cx, cy, colors, scale = 1) {
+  const s = scale * 1.6;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Outer flame
+  ctx.beginPath();
+  ctx.moveTo(0, -550*s);
+  ctx.bezierCurveTo(-50*s, -480*s, -200*s, -300*s, -280*s, -100*s);
+  ctx.bezierCurveTo(-350*s, 80*s, -300*s, 280*s, -200*s, 400*s);
+  ctx.bezierCurveTo(-100*s, 520*s, -30*s, 580*s, 0, 630*s);
+  ctx.bezierCurveTo(30*s, 580*s, 100*s, 520*s, 200*s, 400*s);
+  ctx.bezierCurveTo(300*s, 280*s, 350*s, 80*s, 280*s, -100*s);
+  ctx.bezierCurveTo(200*s, -300*s, 50*s, -480*s, 0, -550*s);
+  ctx.closePath();
+  ctx.fillStyle = colors.primary; ctx.globalAlpha = 0.9; ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Middle flame
+  ctx.beginPath();
+  ctx.moveTo(0, -350*s);
+  ctx.bezierCurveTo(-30*s, -300*s, -150*s, -180*s, -180*s, -30*s);
+  ctx.bezierCurveTo(-210*s, 100*s, -160*s, 220*s, -100*s, 300*s);
+  ctx.bezierCurveTo(-40*s, 370*s, -15*s, 400*s, 0, 430*s);
+  ctx.bezierCurveTo(15*s, 400*s, 40*s, 370*s, 100*s, 300*s);
+  ctx.bezierCurveTo(160*s, 220*s, 210*s, 100*s, 180*s, -30*s);
+  ctx.bezierCurveTo(150*s, -180*s, 30*s, -300*s, 0, -350*s);
+  ctx.closePath();
+  ctx.fillStyle = colors.accent; ctx.globalAlpha = 0.85; ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Inner flame
+  ctx.beginPath();
+  ctx.moveTo(0, -180*s);
+  ctx.bezierCurveTo(-15*s, -150*s, -80*s, -70*s, -90*s, 20*s);
+  ctx.bezierCurveTo(-100*s, 90*s, -70*s, 150*s, -40*s, 200*s);
+  ctx.bezierCurveTo(-10*s, 230*s, 0, 250*s, 0, 270*s);
+  ctx.bezierCurveTo(0, 250*s, 10*s, 230*s, 40*s, 200*s);
+  ctx.bezierCurveTo(70*s, 150*s, 100*s, 90*s, 90*s, 20*s);
+  ctx.bezierCurveTo(80*s, -70*s, 15*s, -150*s, 0, -180*s);
+  ctx.closePath();
+  ctx.fillStyle = colors.highlight; ctx.fill();
+  ctx.restore();
+}
+
+function drawLightning(ctx, cx, cy, colors, scale = 1) {
+  const s = scale * 1.4;
+  ctx.save();
+  ctx.translate(cx, cy);
+  const pts = [[-80*s,-650*s], [-350*s,50*s], [-50*s,50*s], [80*s,650*s], [350*s,-50*s], [50*s,-50*s]];
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = colors.primary; ctx.fill();
+  ctx.strokeStyle = colors.accent; ctx.lineWidth = 20*s; ctx.lineJoin = 'round'; ctx.stroke();
+
+  // Inner highlight
+  const inner = [[-50*s,-500*s], [-250*s,30*s], [-20*s,30*s], [50*s,500*s], [250*s,-30*s], [20*s,-30*s]];
+  ctx.beginPath(); ctx.moveTo(inner[0][0], inner[0][1]);
+  for (let i = 1; i < inner.length; i++) ctx.lineTo(inner[i][0], inner[i][1]);
+  ctx.closePath();
+  ctx.fillStyle = colors.accent; ctx.globalAlpha = 0.3; ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+function drawShield(ctx, cx, cy, colors, scale = 1) {
+  const s = scale * 1.5;
+  ctx.save();
+  ctx.translate(cx, cy);
+  const pts = [[0,-500*s], [-400*s,-300*s], [-350*s,250*s], [0,500*s], [350*s,250*s], [400*s,-300*s]];
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 50*s; ctx.lineJoin = 'round'; ctx.stroke();
+
+  const inner = [[0,-350*s], [-260*s,-200*s], [-230*s,170*s], [0,350*s], [230*s,170*s], [260*s,-200*s]];
+  ctx.beginPath(); ctx.moveTo(inner[0][0], inner[0][1]);
+  for (let i = 1; i < inner.length; i++) ctx.lineTo(inner[i][0], inner[i][1]);
+  ctx.closePath();
+  ctx.strokeStyle = colors.accent; ctx.lineWidth = 20*s; ctx.globalAlpha = 0.4; ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Cross
+  ctx.lineWidth = 30*s; ctx.strokeStyle = colors.primary; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, -200*s); ctx.lineTo(0, 200*s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(-150*s, 0); ctx.lineTo(150*s, 0); ctx.stroke();
+  ctx.restore();
+}
+
+function drawSword(ctx, cx, cy, colors, scale = 1) {
+  const s = scale * 1.6;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-Math.PI / 6);
+
+  // Blade
+  ctx.fillStyle = colors.primary;
+  ctx.fillRect(-18*s, -500*s, 36*s, 700*s);
+
+  // Point
+  ctx.beginPath(); ctx.moveTo(0, -550*s); ctx.lineTo(-50*s, -450*s); ctx.lineTo(50*s, -450*s); ctx.closePath();
+  ctx.fill();
+
+  // Guard
+  ctx.fillStyle = colors.accent;
+  ctx.beginPath();
+  ctx.roundRect(-120*s, 180*s, 240*s, 40*s, 8*s);
+  ctx.fill();
+
+  // Grip
+  ctx.fillStyle = colors.primary;
+  ctx.fillRect(-14*s, 220*s, 28*s, 160*s);
+
+  // Pommel
+  ctx.beginPath(); ctx.arc(0, 400*s, 30*s, 0, Math.PI*2);
+  ctx.fillStyle = colors.accent; ctx.fill();
+  ctx.restore();
+}
+
+function drawController(ctx, cx, cy, colors, scale = 1) {
+  const s = scale * 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+
+  // Body
+  ctx.beginPath();
+  ctx.moveTo(-220*s, -80*s);
+  ctx.bezierCurveTo(-280*s, -80*s, -320*s, -40*s, -320*s, 30*s);
+  ctx.lineTo(-320*s, 120*s);
+  ctx.bezierCurveTo(-320*s, 180*s, -280*s, 220*s, -220*s, 220*s);
+  ctx.lineTo(-120*s, 220*s);
+  ctx.bezierCurveTo(-80*s, 220*s, -40*s, 180*s, -20*s, 140*s);
+  ctx.lineTo(20*s, 140*s);
+  ctx.bezierCurveTo(40*s, 180*s, 80*s, 220*s, 120*s, 220*s);
+  ctx.lineTo(220*s, 220*s);
+  ctx.bezierCurveTo(280*s, 220*s, 320*s, 180*s, 320*s, 120*s);
+  ctx.lineTo(320*s, 30*s);
+  ctx.bezierCurveTo(320*s, -40*s, 280*s, -80*s, 220*s, -80*s);
+  ctx.closePath();
+  ctx.fillStyle = colors.primary; ctx.fill();
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 10*s; ctx.stroke();
+
+  // D-pad
+  ctx.fillStyle = '#000'; ctx.globalAlpha = 0.5;
+  ctx.fillRect(-180*s, -20*s, 30*s, 90*s);
+  ctx.fillRect(-215*s, 15*s, 100*s, 25*s);
+  ctx.globalAlpha = 1;
+
+  // Buttons
+  const btns = [[160*s, 0], [200*s, 40*s], [120*s, 40*s], [160*s, 80*s]];
+  for (let i = 0; i < btns.length; i++) {
+    ctx.beginPath(); ctx.arc(btns[i][0], btns[i][1], 18*s, 0, Math.PI*2);
+    ctx.fillStyle = colors.accent; ctx.globalAlpha = i === 0 ? 1 : 0.6; ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+  ctx.restore();
+}
+
+// ── Icon registry ─────────────────────────────────────────────────────────────
 const ICON_KEYWORDS = {
   crosshair: ['crosshair', 'scope', 'target', 'aim', 'headshot', 'sniper'],
-  skull: ['skull', 'death', 'dead', 'kill', 'rip', 'bones'],
+  skull: ['skull', 'death', 'dead', 'kill', 'rip', 'bones', 'wasted'],
   flame: ['flame', 'fire', 'hot', 'burn', 'lit'],
   lightning: ['lightning', 'bolt', 'electric', 'power', 'energy', 'thunder', 'shock', 'zap'],
   shield: ['shield', 'defend', 'tank', 'protect', 'guard', 'armor'],
-  sword: ['sword', 'blade', 'slash', 'cut', 'sharp', 'weapon'],
+  sword: ['sword', 'blade', 'slash', 'cut', 'weapon'],
   controller: ['controller', 'gaming', 'gamepad', 'joystick', 'console', 'gamer'],
 };
 
-const STYLE_KEYWORDS = {
-  neon: ['neon', 'glow', 'rave', 'synthwave', 'cyber', 'vaporwave', 'electric'],
-  distressed: ['distressed', 'grunge', 'vintage', 'worn', 'old', 'faded', 'weathered'],
-  varsity: ['varsity', 'college', 'team', 'collegiate', 'sport', 'athletic', 'league'],
-  street: ['street', 'urban', 'hip hop', 'rap', 'hood', 'block', 'gang'],
-  minimal: ['minimal', 'clean', 'simple', 'elegant', 'subtle'],
-  retro: ['retro', 'arcade', 'pixel', '8-bit', '8bit', 'insert coin', 'press start', 'game over'],
+const ICON_DRAWERS = {
+  crosshair: drawCrosshair,
+  skull: drawSkull,
+  flame: drawFlame,
+  lightning: drawLightning,
+  shield: drawShield,
+  sword: drawSword,
+  controller: drawController,
 };
 
 function detectIcon(prompt) {
@@ -473,6 +412,16 @@ function detectIcon(prompt) {
   return null;
 }
 
+// ── Style detection ───────────────────────────────────────────────────────────
+const STYLE_KEYWORDS = {
+  neon: ['neon', 'glow', 'rave', 'synthwave', 'cyber', 'vaporwave', 'electric'],
+  distressed: ['distressed', 'grunge', 'vintage', 'worn', 'old', 'faded', 'weathered'],
+  varsity: ['varsity', 'college', 'team', 'collegiate', 'sport', 'athletic', 'league'],
+  street: ['street', 'urban', 'hip hop', 'hood', 'block'],
+  minimal: ['minimal', 'clean', 'simple', 'elegant', 'subtle'],
+  retro: ['retro', 'arcade', 'pixel', '8-bit', '8bit', 'insert coin', 'press start', 'game over'],
+};
+
 function detectStyle(prompt) {
   const p = prompt.toLowerCase();
   for (const [style, keywords] of Object.entries(STYLE_KEYWORDS)) {
@@ -483,39 +432,231 @@ function detectStyle(prompt) {
   return null;
 }
 
-const ICON_BUILDERS = {
-  crosshair: iconCrosshair,
-  skull: iconSkull,
-  flame: iconFlame,
-  lightning: iconLightning,
-  shield: iconShield,
-  sword: iconSword,
-  controller: iconController,
-};
+// ── Design styles ─────────────────────────────────────────────────────────────
 
-const STYLE_BUILDERS = {
+function styleBold(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 12);
+  const fontSize = calcFontSize(ctx, lines, W * 0.85, 700);
+  const spacing = fontSize * 0.06;
+
+  // Drop shadow
+  ctx.save();
+  ctx.shadowColor = colors.primary;
+  ctx.shadowBlur = 80;
+  ctx.shadowOffsetY = 30;
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: colors.primary, stroke: '#000', strokeWidth: fontSize * 0.08, letterSpacing: spacing
+  });
+  ctx.restore();
+
+  // Main text with gradient
+  const grad = vertGradient(ctx, CY - fontSize, CY + fontSize, colors.primary, colors.accent);
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: grad, stroke: '#000', strokeWidth: fontSize * 0.08, letterSpacing: spacing
+  });
+
+  // Accent line
+  ctx.globalAlpha = 0.2;
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 6;
+  ctx.beginPath(); ctx.moveTo(CX - 1200, CY + fontSize * 0.7); ctx.lineTo(CX + 1200, CY + fontSize * 0.7); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function styleNeon(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 14);
+  const fontSize = calcFontSize(ctx, lines, W * 0.8, 600);
+
+  // Glow layers (multiple blurred passes)
+  for (let i = 3; i >= 0; i--) {
+    ctx.save();
+    ctx.shadowColor = colors.primary;
+    ctx.shadowBlur = 60 + i * 40;
+    ctx.globalAlpha = 0.15 + i * 0.05;
+    drawMultiline(ctx, lines, CY, { fontSize, fill: colors.primary });
+    ctx.restore();
+  }
+
+  // Crisp text on top
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: colors.highlight || '#FFFFFF',
+    stroke: colors.primary, strokeWidth: fontSize * 0.04,
+    letterSpacing: fontSize * 0.04
+  });
+}
+
+function styleDistressed(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 12);
+  const fontSize = calcFontSize(ctx, lines, W * 0.85, 700);
+
+  // Draw text
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: colors.primary,
+    stroke: '#000', strokeWidth: fontSize * 0.06,
+    letterSpacing: fontSize * 0.04
+  });
+
+  // Distress overlay — random rectangles that "erase" parts
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  const seed = [...text].reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0);
+  for (let i = 0; i < 200; i++) {
+    const x = Math.abs((seed * (i + 1) * 7) % W);
+    const y = Math.abs((seed * (i + 1) * 13) % H);
+    const w = 20 + Math.abs((seed * (i + 1) * 3) % 80);
+    const h = 10 + Math.abs((seed * (i + 1) * 11) % 30);
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(x, y, w, h);
+  }
+  ctx.restore();
+}
+
+function styleVarsity(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 10);
+  const fontSize = calcFontSize(ctx, lines, W * 0.8, 650);
+
+  // Stars decoration
+  ctx.font = `200px Impact`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = colors.accent; ctx.globalAlpha = 0.5;
+  ctx.fillText('★  ★  ★', CX, CY - fontSize * 0.9);
+  ctx.globalAlpha = 1;
+
+  // Triple outline: outer dark, middle colored, inner fill
+  drawMultiline(ctx, lines, CY, { fontSize, fill: 'transparent', stroke: '#000', strokeWidth: fontSize * 0.14 });
+  drawMultiline(ctx, lines, CY, { fontSize, fill: 'transparent', stroke: colors.accent, strokeWidth: fontSize * 0.08 });
+  drawMultiline(ctx, lines, CY, { fontSize, fill: colors.primary, letterSpacing: fontSize * 0.05 });
+
+  // Underline decorations
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 20;
+  ctx.beginPath(); ctx.moveTo(CX - fontSize * 1.5, CY + fontSize * 0.7); ctx.lineTo(CX + fontSize * 1.5, CY + fontSize * 0.7); ctx.stroke();
+  ctx.strokeStyle = colors.accent; ctx.lineWidth = 10;
+  ctx.beginPath(); ctx.moveTo(CX - fontSize * 1.3, CY + fontSize * 0.82); ctx.lineTo(CX + fontSize * 1.3, CY + fontSize * 0.82); ctx.stroke();
+}
+
+function styleStreet(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 10);
+  const fontSize = calcFontSize(ctx, lines, W * 0.85, 750);
+
+  // Hard offset shadow
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  drawMultiline(ctx, lines, CY + 24, { fontSize, fill: colors.accent, letterSpacing: fontSize * 0.02 });
+  ctx.restore();
+
+  // Second shadow layer
+  drawMultiline(ctx, lines, CY + 12, { fontSize, fill: '#000', stroke: '#000', strokeWidth: fontSize * 0.02 });
+
+  // Main text
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: colors.primary,
+    stroke: '#000', strokeWidth: fontSize * 0.06,
+    letterSpacing: fontSize * 0.02
+  });
+}
+
+function styleMinimal(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 20);
+  const fontSize = calcFontSize(ctx, lines, W * 0.7, 450);
+
+  // Top rule
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 4; ctx.globalAlpha = 0.4;
+  ctx.beginPath(); ctx.moveTo(CX - 600, CY - fontSize * 0.8); ctx.lineTo(CX + 600, CY - fontSize * 0.8); ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: colors.primary, letterSpacing: fontSize * 0.2
+  });
+
+  // Bottom rule
+  ctx.strokeStyle = colors.primary; ctx.lineWidth = 4; ctx.globalAlpha = 0.4;
+  ctx.beginPath(); ctx.moveTo(CX - 600, CY + fontSize * 0.8); ctx.lineTo(CX + 600, CY + fontSize * 0.8); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function styleRetro(ctx, text, colors) {
+  const lines = splitText(text.toUpperCase(), 12);
+  const fontSize = calcFontSize(ctx, lines, W * 0.8, 550);
+
+  // Scanlines
+  ctx.strokeStyle = '#000'; ctx.lineWidth = 3; ctx.globalAlpha = 0.1;
+  for (let y = 0; y < H; y += 16) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // "PRESS START" subtitle
+  ctx.font = `140px Impact`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = colors.accent; ctx.globalAlpha = 0.6;
+  ctx.letterSpacing = '40px';
+  ctx.fillText('PRESS START', CX, CY - fontSize);
+  ctx.globalAlpha = 1;
+
+  // Shadow
+  drawMultiline(ctx, lines, CY + 50, { fontSize, fill: '#000' });
+
+  // Main text
+  drawMultiline(ctx, lines, CY, {
+    fontSize, fill: colors.primary,
+    stroke: colors.accent, strokeWidth: fontSize * 0.03,
+    letterSpacing: fontSize * 0.08
+  });
+
+  // Score dots
+  ctx.font = `120px Impact`;
+  ctx.fillStyle = colors.accent; ctx.globalAlpha = 0.5;
+  ctx.fillText('■  ■  ■  ■  ■', CX, CY + fontSize * 1.1);
+  ctx.globalAlpha = 1;
+}
+
+// ── Style registry ────────────────────────────────────────────────────────────
+const STYLE_FNS = {
   neon: styleNeon,
   distressed: styleDistressed,
   varsity: styleVarsity,
   street: styleStreet,
   minimal: styleMinimal,
-  retro: styleRetroArcade,
+  retro: styleRetro,
 };
 
 // ── Main export ───────────────────────────────────────────────────────────────
-export function generateDesignSvg(prompt) {
+export function generateDesign(prompt) {
+  const canvas = createCanvas(W, H);
+  const ctx = canvas.getContext('2d');
+
+  // Transparent background
+  ctx.clearRect(0, 0, W, H);
+
   const colors = getColors(prompt);
   const icon = detectIcon(prompt);
   const style = detectStyle(prompt);
 
-  // If we have an icon match, use icon+text composition
   if (icon) {
-    const iconSvg = ICON_BUILDERS[icon](colors);
-    // Still apply a style to the icon layout if possible
-    return styleWithIcon(prompt, colors, iconSvg);
+    // Icon + text layout — tighter composition
+    const drawIcon = ICON_DRAWERS[icon];
+    const iconY = CY - 400;
+    const textY = CY + 800;
+
+    // Shadow behind icon
+    ctx.save();
+    ctx.shadowColor = colors.primary; ctx.shadowBlur = 80; ctx.shadowOffsetY = 30;
+    drawIcon(ctx, CX, iconY, colors, 1);
+    ctx.restore();
+    drawIcon(ctx, CX, iconY, colors, 1);
+
+    // Text below icon
+    const lines = splitText(prompt.toUpperCase(), 14);
+    const fontSize = calcFontSize(ctx, lines, W * 0.8, 500);
+    const grad = vertGradient(ctx, textY - fontSize, textY + fontSize, colors.primary, colors.accent);
+    drawMultiline(ctx, lines, textY, {
+      fontSize, fill: grad,
+      stroke: '#000', strokeWidth: fontSize * 0.07,
+      letterSpacing: fontSize * 0.04
+    });
+  } else {
+    const styleFn = style ? STYLE_FNS[style] : styleBold;
+    styleFn(ctx, prompt, colors);
   }
 
-  // Apply detected style, or fall back to bold
-  const styleFn = style ? STYLE_BUILDERS[style] : styleBold;
-  return styleFn(prompt, colors);
+  return canvas.toBuffer('image/png');
 }

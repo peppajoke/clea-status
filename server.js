@@ -11,7 +11,7 @@ import { CronExpressionParser } from 'cron-parser';
 import cronstrue from 'cronstrue';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { generateDesignSvg } from './design-generator.js';
+import { generateDesign } from './design-generator.js';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1415,11 +1415,12 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
     const filename = `studio-${slug}-${id}.png`;
     const filepath = path.join(designsDir, filename);
 
-    // Generate SVG via design engine
-    const svg = generateDesignSvg(prompt);
+    // Generate PNG via canvas design engine
+    const pngBuffer = generateDesign(prompt);
 
-    // Convert SVG to PNG
-    await sharp(Buffer.from(svg)).png().toFile(filepath);
+    // Write PNG to file
+    const fs2 = await import('fs/promises');
+    await fs2.writeFile(filepath, pngBuffer);
 
     const imageUrl = '/designs/' + filename;
 
