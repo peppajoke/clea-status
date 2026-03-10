@@ -12,6 +12,7 @@ import cronstrue from 'cronstrue';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { generateDesign } from './design-generator.js';
+import { generateDesignLLM } from './design-llm.js';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1415,8 +1416,21 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
     const filename = `studio-${slug}-${id}.png`;
     const filepath = path.join(designsDir, filename);
 
-    // Generate PNG via canvas design engine
-    const pngBuffer = generateDesign(prompt);
+    // Try LLM generation first (reads little brain model from DB), fall back to canvas templates
+    let pngBuffer;
+    let generationMethod = 'template';
+    try {
+      // Get little brain model setting
+      const { rows: brainRows } = await pool.query(
+        "SELECT value FROM node_state WHERE key = 'littleBrainModel'"
+      );
+      const brainModel = brainRows[0]?.value || 'haiku';
+      pngBuffer = await generateDesignLLM(prompt, brainModel);
+      generationMethod = 'llm';
+    } catch (llmErr) {
+      console.warn('[design] LLM generation failed, falling back to templates:', llmErr.message);
+      pngBuffer = generateDesign(prompt);
+    }
 
     // Write PNG to file
     const fs2 = await import('fs/promises');
@@ -1430,7 +1444,7 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
       [prompt.trim(), imageUrl]
     );
 
-    res.json({ ...rows[0], imageUrl, title: prompt.trim() });
+    res.json({ ...rows[0], imageUrl, title: prompt.trim(), method: generationMethod });
   } catch (e) {
     console.error('Design generation error:', e);
     res.status(500).json({ error: e.message });
