@@ -12,6 +12,7 @@ const ADMIN_NAV = [
   { path: '/links', label: 'Links' },
   { path: '/scheduler', label: 'Scheduler' },
   { path: '/ideas', label: 'Ideas' },
+  { path: '/studio', label: 'Studio' },
   { path: '/settings', label: 'Settings' },
 ]
 

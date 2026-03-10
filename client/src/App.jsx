@@ -7,6 +7,7 @@ import SettingsPage from './pages/SettingsPage'
 import ChatPage from './pages/ChatPage'
 import LinksPage from './pages/LinksPage'
 import IdeasPage from './pages/IdeasPage'
+import StudioPage from './pages/StudioPage'
 import './App.css'
 
 export const AuthContext = createContext({ authenticated: false, setAuthenticated: () => {} })
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/scheduler" element={<ProtectedRoute authenticated={authenticated}><SchedulerPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute authenticated={authenticated}><SettingsPage /></ProtectedRoute>} />
           <Route path="/ideas" element={<ProtectedRoute authenticated={authenticated}><IdeasPage /></ProtectedRoute>} />
+          <Route path="/studio" element={<ProtectedRoute authenticated={authenticated}><StudioPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
