@@ -1,21 +1,8 @@
 // design-generator.js — SVG design generator for t-shirt prints
 // Generates 4500x5400 transparent-background PNGs via sharp
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const W = 4500, H = 5400;
 const CX = W / 2, CY = H / 2;
-
-// Load Impact font as base64 for embedding in SVGs (ensures text renders on any server)
-let IMPACT_FONT_B64 = '';
-try {
-  IMPACT_FONT_B64 = fs.readFileSync(path.join(__dirname, 'impact-font-b64.txt'), 'utf-8').trim();
-} catch (e) {
-  console.warn('[design-generator] Could not load Impact font base64:', e.message);
-}
 
 // ── Color system ──────────────────────────────────────────────────────────────
 const COLOR_MAP = {
@@ -73,20 +60,8 @@ function svgOpen() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
 }
 
-function fontStyle() {
-  if (!IMPACT_FONT_B64) return '';
-  return `<style>
-    @font-face {
-      font-family: 'Impact';
-      src: url('data:font/ttf;base64,${IMPACT_FONT_B64}') format('truetype');
-      font-weight: normal;
-      font-style: normal;
-    }
-  </style>`;
-}
-
 function defs(primary, accent, highlight) {
-  return fontStyle() + `<defs>
+  return `<defs>
     <linearGradient id="grad-v" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="${primary}"/>
       <stop offset="100%" stop-color="${accent}"/>
