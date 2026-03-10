@@ -11,6 +11,7 @@ import { CronExpressionParser } from 'cron-parser';
 import cronstrue from 'cronstrue';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { generateDesignSvg } from './design-generator.js';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1414,124 +1415,8 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
     const filename = `studio-${slug}-${id}.png`;
     const filepath = path.join(designsDir, filename);
 
-    // Build SVG from prompt
-    const W = 4500, H = 5400;
-    const words = prompt.toUpperCase().trim();
-    const cx = W / 2, cy = H / 2;
-
-    // Parse prompt for hints
-    const p = prompt.toLowerCase();
-    const colors = {
-      red: '#FF0044', blue: '#0088FF', green: '#00FF88', gold: '#FFD700',
-      pink: '#FF69B4', purple: '#9933FF', orange: '#FF6600', cyan: '#00FFFF',
-      neon: '#39FF14', white: '#FFFFFF', black: '#000000', yellow: '#FFD700',
-    };
-    let mainColor = '#FFFFFF';
-    for (const [name, hex] of Object.entries(colors)) {
-      if (p.includes(name)) { mainColor = hex; break; }
-    }
-
-    let svg;
-    if (p.includes('pixel') || p.includes('8-bit') || p.includes('retro')) {
-      // Pixel art style
-      const textLines = words.split(/\s+/).slice(0, 3);
-      const displayText = textLines.join(' ');
-      const px = 350;
-      // Generate a simple pixel pattern from the text hash
-      const hash = [...prompt].reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0);
-      const gridW = 9, gridH = 9;
-      let rects = '';
-      for (let y = 0; y < gridH; y++) {
-        for (let x = 0; x < Math.ceil(gridW / 2); x++) {
-          const val = Math.abs((hash * (y * gridW + x + 1) * 7) % 100);
-          if (val < 55) {
-            const offX = (W - gridW * px) / 2;
-            const offY = (H - gridH * px) / 2 - 500;
-            rects += '<rect x="' + (offX + x * px) + '" y="' + (offY + y * px) + '" width="' + px + '" height="' + px + '" fill="' + mainColor + '"/>';
-            // Mirror
-            const mx = gridW - 1 - x;
-            if (mx !== x) rects += '<rect x="' + (offX + mx * px) + '" y="' + (offY + y * px) + '" width="' + px + '" height="' + px + '" fill="' + mainColor + '"/>';
-          }
-        }
-      }
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' + rects +
-        '<text x="' + cx + '" y="' + (cy + 1800) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="350" fill="' + mainColor + '">' + displayText + '</text></svg>';
-
-    } else if (p.includes('circle') || p.includes('target') || p.includes('focus') || p.includes('crosshair')) {
-      // Concentric circles
-      let shapes = '';
-      const count = 4;
-      for (let i = 0; i < count; i++) {
-        const r = 400 + i * 300;
-        shapes += '<circle cx="' + cx + '" cy="' + (cy - 300) + '" r="' + r + '" fill="none" stroke="' + mainColor + '" stroke-width="' + (50 - i * 10) + '" opacity="' + (1 - i * 0.2) + '"/>';
-      }
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' + shapes +
-        '<text x="' + cx + '" y="' + (cy + 1500) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="400" fill="' + mainColor + '">' + words + '</text></svg>';
-
-    } else if (p.includes('flame') || p.includes('fire') || p.includes('hot')) {
-      // Flame icon
-      const flameColor = mainColor === '#FFFFFF' ? '#FF4400' : mainColor;
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' +
-        '<g transform="translate(' + cx + ',' + (cy - 600) + ')">' +
-        '<path d="M0,-1000 C-300,-700 -600,-200 -500,200 C-400,600 -200,800 0,1100 C200,800 400,600 500,200 C600,-200 300,-700 0,-1000 Z" fill="' + flameColor + '" opacity="0.9"/>' +
-        '<path d="M0,-600 C-180,-400 -300,-50 -250,150 C-200,350 -100,500 0,700 C100,500 200,350 250,150 C300,-50 180,-400 0,-600 Z" fill="#FF8800" opacity="0.8"/>' +
-        '<path d="M0,-300 C-80,-180 -150,0 -120,100 C-80,200 -40,280 0,380 C40,280 80,200 120,100 C150,0 80,-180 0,-300 Z" fill="#FFCC00"/>' +
-        '</g>' +
-        '<text x="' + cx + '" y="' + (cy + 1200) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="450" fill="' + flameColor + '">' + words + '</text></svg>';
-
-    } else if (p.includes('lightning') || p.includes('bolt') || p.includes('electric') || p.includes('power') || p.includes('energy')) {
-      const boltColor = mainColor === '#FFFFFF' ? '#FFD700' : mainColor;
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' +
-        '<polygon points="' + (cx-300) + ',' + (cy-1800) + ' ' + (cx-900) + ',' + (cy+200) + ' ' + (cx-150) + ',' + (cy+200) + ' ' + (cx+300) + ',' + (cy+1800) + ' ' + (cx+900) + ',' + (cy-200) + ' ' + (cx+150) + ',' + (cy-200) + '" fill="' + boltColor + '" stroke="#FFA500" stroke-width="30" stroke-linejoin="round"/>' +
-        '<text x="' + cx + '" y="' + (cy + 2400) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="400" fill="' + boltColor + '">' + words + '</text></svg>';
-
-    } else if (p.includes('skull') || p.includes('death') || p.includes('dead')) {
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' +
-        '<g transform="translate(' + (cx - 800) + ',' + (cy - 1200) + ') scale(2.5)">' +
-        '<path d="M320,80 C180,80 80,180 80,320 C80,420 120,500 180,540 L180,620 L260,620 L260,580 L300,580 L300,620 L380,620 L380,580 L420,580 L420,620 L500,620 L500,540 C560,500 600,420 600,320 C600,180 500,80 360,80 Z" fill="' + mainColor + '"/>' +
-        '<ellipse cx="260" cy="300" rx="60" ry="70" fill="#000000"/>' +
-        '<ellipse cx="420" cy="300" rx="60" ry="70" fill="#000000"/>' +
-        '<path d="M300,420 L340,460 L380,420 L340,480 Z" fill="#000000"/></g>' +
-        '<text x="' + cx + '" y="' + (cy + 1400) + '" text-anchor="middle" font-family="Courier New, monospace" font-weight="bold" font-size="400" fill="' + mainColor + '">' + words + '</text></svg>';
-
-    } else if (p.includes('shield') || p.includes('defend') || p.includes('tank') || p.includes('protect')) {
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' +
-        '<g transform="translate(' + cx + ',' + (cy - 500) + ')">' +
-        '<polygon points="0,-1000 -750,-500 -650,500 0,1000 650,500 750,-500" fill="none" stroke="' + mainColor + '" stroke-width="60" stroke-linejoin="round"/>' +
-        '<polygon points="0,-650 -450,-350 -380,300 0,650 380,300 450,-350" fill="none" stroke="' + mainColor + '" stroke-width="30" opacity="0.5"/>' +
-        '</g>' +
-        '<text x="' + cx + '" y="' + (cy + 1300) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="450" fill="' + mainColor + '">' + words + '</text></svg>';
-
-    } else {
-      // Default: bold text with geometric accent
-      const lines = words.split(/\s+/);
-      let textSvg = '';
-      if (lines.length <= 2) {
-        const fontSize = lines.some(l => l.length > 8) ? 350 : 500;
-        lines.forEach((line, i) => {
-          textSvg += '<text x="' + cx + '" y="' + (cy - 200 + i * (fontSize + 80)) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="' + fontSize + '" fill="' + mainColor + '">' + line + '</text>';
-        });
-      } else {
-        const fontSize = 300;
-        const totalH = lines.length * (fontSize + 60);
-        const startY = cy - totalH / 2 + fontSize;
-        lines.forEach((line, i) => {
-          textSvg += '<text x="' + cx + '" y="' + (startY + i * (fontSize + 60)) + '" text-anchor="middle" font-family="Arial Black, sans-serif" font-weight="900" font-size="' + fontSize + '" fill="' + mainColor + '">' + line + '</text>';
-        });
-      }
-      // Accent lines
-      const accentY = cy + 800;
-      const accent = '<line x1="' + (cx - 800) + '" y1="' + accentY + '" x2="' + (cx + 800) + '" y2="' + accentY + '" stroke="' + mainColor + '" stroke-width="8" opacity="0.3"/>';
-
-      svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '">' +
-        '<rect width="' + W + '" height="' + H + '" fill="transparent"/>' + textSvg + accent + '</svg>';
-    }
+    // Generate SVG via design engine
+    const svg = generateDesignSvg(prompt);
 
     // Convert SVG to PNG
     await sharp(Buffer.from(svg)).png().toFile(filepath);
