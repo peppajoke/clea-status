@@ -1361,6 +1361,44 @@ app.post('/auth/verify', (req, res) => {
 
 // ── Design Studio ─────────────────────────────────────────────────────────────
 
+// List all saved designs (newest first)
+app.get('/api/studio-designs', requireAccess, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM studio_designs ORDER BY created_at DESC'
+    );
+    res.json(rows);
+  } catch (e) {
+    console.error('List designs error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete a design by ID
+app.delete('/api/studio-designs/:id', requireAccess, async (req, res) => {
+  try {
+    const { id } = req.params;
+    // Get the design to find the file path
+    const { rows } = await pool.query('SELECT * FROM studio_designs WHERE id = $1', [id]);
+    if (!rows.length) return res.status(404).json({ error: 'Design not found' });
+
+    const design = rows[0];
+
+    // Delete the PNG file from disk
+    if (design.image_url) {
+      const filepath = path.join(__dirname, 'public', design.image_url);
+      try { fs.unlinkSync(filepath); } catch (_) { /* file may already be gone */ }
+    }
+
+    // Delete from DB
+    await pool.query('DELETE FROM studio_designs WHERE id = $1', [id]);
+    res.json({ deleted: true, id });
+  } catch (e) {
+    console.error('Delete design error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Generate a design from a prompt
 app.post('/api/generate-design', requireAccess, async (req, res) => {
   try {
@@ -1499,7 +1537,14 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
     await sharp(Buffer.from(svg)).png().toFile(filepath);
 
     const imageUrl = '/designs/' + filename;
-    res.json({ imageUrl, title: prompt.trim() });
+
+    // Persist to DB
+    const { rows } = await pool.query(
+      'INSERT INTO studio_designs (prompt, image_url) VALUES ($1, $2) RETURNING *',
+      [prompt.trim(), imageUrl]
+    );
+
+    res.json({ ...rows[0], imageUrl, title: prompt.trim() });
   } catch (e) {
     console.error('Design generation error:', e);
     res.status(500).json({ error: e.message });

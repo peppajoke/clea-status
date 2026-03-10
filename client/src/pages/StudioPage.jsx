@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './StudioPage.css'
 
 const PRODUCT_TYPES = [
@@ -13,16 +13,31 @@ export default function StudioPage() {
   const [prompt, setPrompt] = useState('')
   const [generating, setGenerating] = useState(false)
   const [imageUrl, setImageUrl] = useState(null)
+  const [activeDesignId, setActiveDesignId] = useState(null)
   const [publishing, setPublishing] = useState(null)
   const [published, setPublished] = useState([])
   const [error, setError] = useState(null)
-  const [history, setHistory] = useState([])
+  const [designs, setDesigns] = useState([])
+  const [loadingDesigns, setLoadingDesigns] = useState(true)
+  const [deleting, setDeleting] = useState(null)
+
+  // Load saved designs on mount
+  useEffect(() => {
+    fetch('/api/studio-designs')
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) setDesigns(data)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDesigns(false))
+  }, [])
 
   const generate = async () => {
     if (!prompt.trim()) return
     setGenerating(true)
     setError(null)
     setImageUrl(null)
+    setActiveDesignId(null)
     setPublished([])
     try {
       const res = await fetch('/api/generate-design', {
@@ -32,12 +47,37 @@ export default function StudioPage() {
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
-      setImageUrl(data.imageUrl)
-      setHistory(prev => [{ prompt: prompt.trim(), imageUrl: data.imageUrl, title: data.title }, ...prev.slice(0, 9)])
+      setImageUrl(data.imageUrl || data.image_url)
+      setActiveDesignId(data.id)
+      // Prepend to saved designs list
+      setDesigns(prev => [data, ...prev])
     } catch (e) {
       setError('Generation failed: ' + e.message)
     } finally {
       setGenerating(false)
+    }
+  }
+
+  const deleteDesign = async (id, e) => {
+    e.stopPropagation()
+    if (deleting) return
+    setDeleting(id)
+    try {
+      const res = await fetch(`/api/studio-designs/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.deleted) {
+        setDesigns(prev => prev.filter(d => d.id !== id))
+        // If we're viewing the deleted design, clear the preview
+        if (activeDesignId === id) {
+          setImageUrl(null)
+          setActiveDesignId(null)
+          setPublished([])
+        }
+      }
+    } catch (_) {
+      setError('Delete failed')
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -65,9 +105,10 @@ export default function StudioPage() {
     }
   }
 
-  const loadFromHistory = (item) => {
-    setPrompt(item.prompt)
-    setImageUrl(item.imageUrl)
+  const loadDesign = (design) => {
+    setPrompt(design.prompt)
+    setImageUrl(design.image_url || design.imageUrl)
+    setActiveDesignId(design.id)
     setPublished([])
     setError(null)
   }
@@ -127,19 +168,37 @@ export default function StudioPage() {
         </div>
       )}
 
-      {history.length > 0 && (
-        <div className="studio-history">
-          <h3>Recent</h3>
-          <div className="studio-history-grid">
-            {history.map((item, i) => (
-              <div key={i} className="studio-history-item" onClick={() => loadFromHistory(item)}>
-                <img src={item.imageUrl} alt={item.prompt} />
-                <span>{item.prompt}</span>
+      <div className="studio-saved">
+        <h3>📁 Saved Designs {designs.length > 0 && <span className="design-count">({designs.length})</span>}</h3>
+        {loadingDesigns ? (
+          <div className="studio-loading">Loading designs...</div>
+        ) : designs.length === 0 ? (
+          <div className="studio-empty">No designs yet. Generate one above!</div>
+        ) : (
+          <div className="studio-designs-grid">
+            {designs.map(d => (
+              <div
+                key={d.id}
+                className={`studio-design-card ${activeDesignId === d.id ? 'active' : ''}`}
+                onClick={() => loadDesign(d)}
+              >
+                <div className="design-card-img">
+                  <img src={d.image_url || d.imageUrl} alt={d.prompt} />
+                  <button
+                    className="design-delete-btn"
+                    onClick={(e) => deleteDesign(d.id, e)}
+                    disabled={deleting === d.id}
+                    title="Delete design"
+                  >
+                    {deleting === d.id ? '⏳' : '🗑'}
+                  </button>
+                </div>
+                <span className="design-card-label">{d.prompt}</span>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
