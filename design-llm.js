@@ -19,7 +19,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 
 // Model mapping from brain names to API model strings
 const MODEL_MAP = {
-  haiku: 'claude-3-5-haiku-latest',
+  haiku: 'claude-haiku-4-20250414',
   sonnet: 'claude-sonnet-4-20250514',
   opus: 'claude-opus-4-0-20250514',
 };
