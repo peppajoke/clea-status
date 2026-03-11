@@ -109,11 +109,6 @@ async function setup() {
     message TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS task_logs_task_id ON task_logs(task_id)`);
-  await pool.query(`CREATE TABLE IF NOT EXISTS todos (
-    id SERIAL PRIMARY KEY, text TEXT NOT NULL, done BOOLEAN DEFAULT FALSE,
-    start_date DATE, created_at TIMESTAMPTZ DEFAULT NOW()
-  )`);
-  await pool.query(`ALTER TABLE todos ADD COLUMN IF NOT EXISTS start_date DATE`);
   await pool.query(`CREATE TABLE IF NOT EXISTS node_state (
     key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
   )`);
