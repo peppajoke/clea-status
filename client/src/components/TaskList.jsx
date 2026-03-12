@@ -1,4 +1,4 @@
-import { deleteTask, deleteQueueItem } from '../api'
+import { deleteTask } from '../api'
 import './TaskList.css'
 
 const COL_LABELS = {
@@ -11,11 +11,7 @@ export default function TaskList({ tasks, onSelect, onRefresh }) {
   const handleDelete = async (e, task) => {
     e.stopPropagation()
     if (!confirm('Delete this item?')) return
-    if (task._type === 'queue') {
-      await deleteQueueItem(task._queueId)
-    } else {
-      await deleteTask(task.id)
-    }
+    await deleteTask(task.id)
     onRefresh()
   }
 

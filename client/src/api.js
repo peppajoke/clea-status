@@ -12,8 +12,12 @@ export async function fetchTasks() {
   return res.json()
 }
 
-export async function fetchQueue() {
-  const res = await fetch('/api/queue', { headers: { 'x-clea-secret': SECRET } })
+export async function addTask(text, startDate) {
+  const res = await fetch('/api/tasks', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify({ text, start_date: startDate || null }),
+  })
   return res.json()
 }
 
@@ -35,23 +39,6 @@ export async function deleteTask(taskId) {
   const res = await fetch(`/task/${taskId}`, {
     method: 'DELETE',
     headers: headers(),
-  })
-  return res.json()
-}
-
-export async function deleteQueueItem(id) {
-  const res = await fetch(`/api/queue/${id}`, {
-    method: 'DELETE',
-    headers: headers(),
-  })
-  return res.json()
-}
-
-export async function addQueueItem(text, startDate) {
-  const res = await fetch('/api/queue', {
-    method: 'POST',
-    headers: headers(),
-    body: JSON.stringify({ text, start_date: startDate || null }),
   })
   return res.json()
 }
