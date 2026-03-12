@@ -37,10 +37,10 @@ export default function TasksPage() {
   const filteredTasks = (() => {
     if (tab === 'execution') {
       const taskItems = tasks
-        .filter(t => ['active', 'progress', 'todo', 'queue'].includes(t.col) && t.tag !== 'queue-processor')
+        .filter(t => ['active', 'progress', 'todo', 'queue'].includes(t.col))
         .map(t => ({ ...t, _type: 'task' }))
       const queueItems = queue
-        .filter(i => i.status !== 'done')
+        .filter(i => !i.done)
         .map(i => ({ id: `q-${i.id}`, title: i.text, col: 'queued', _type: 'queue', _queueId: i.id, start_date: i.start_date }))
       const all = [...taskItems, ...queueItems]
       const order = { active: 0, progress: 0, todo: 1, queued: 2 }
@@ -58,7 +58,7 @@ export default function TasksPage() {
   })()
 
   const counts = {
-    execution: tasks.filter(t => ['active', 'progress', 'todo', 'queue'].includes(t.col) && t.tag !== 'queue-processor').length + queue.filter(i => i.status !== 'done').length,
+    execution: tasks.filter(t => ['active', 'progress', 'todo', 'queue'].includes(t.col)).length + queue.filter(i => !i.done).length,
     blocked: tasks.filter(t => ['blocked', 'failed', 'rejected'].includes(t.col)).length,
     done: tasks.filter(t => t.col === 'done').length,
   }

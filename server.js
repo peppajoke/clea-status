@@ -109,6 +109,10 @@ async function setup() {
     message TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW()
   )`);
   await pool.query(`CREATE INDEX IF NOT EXISTS task_logs_task_id ON task_logs(task_id)`);
+  await pool.query(`CREATE TABLE IF NOT EXISTS queue_items (
+    id SERIAL PRIMARY KEY, text TEXT NOT NULL, done BOOLEAN DEFAULT FALSE,
+    start_date DATE, assigned_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW()
+  )`);
   await pool.query(`CREATE TABLE IF NOT EXISTS node_state (
     key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TIMESTAMPTZ DEFAULT NOW()
   )`);
@@ -176,27 +180,11 @@ function estimateComplexity(text) {
 
 async function processQueueIntake() {
   try {
-    // Reset stale active tasks (no log activity past timeout)
-    const { rows: activeTasks } = await pool.query(`SELECT id, brain FROM tasks WHERE col='active'`);
-    for (const task of activeTasks) {
-      const timeoutMin = (task.brain === 'little') ? littleBrainTimeoutMinutes : bigBrainTimeoutMinutes;
-      const { rows: recentLogs } = await pool.query(
-        `SELECT 1 FROM task_logs WHERE task_id=$1 AND created_at > NOW() - INTERVAL '1 minute' * $2 LIMIT 1`,
-        [task.id, timeoutMin]
-      );
-      if (!recentLogs.length) {
-        await pool.query(
-          `UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW() WHERE id=$1`,
-          [task.id]
-        );
-        await pool.query(
-          `INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`,
-          [task.id, `⏰ Auto-reset: no activity for >${timeoutMin} minutes`]
-        );
-        console.log(`[queue-processor] Reset stale task ${task.id}`);
-      }
-    }
-
+    // Reset stale claimed queue items (assigned but not completed within timeout)
+    await pool.query(
+      `UPDATE queue_items SET assigned_at=NULL WHERE done=false AND assigned_at IS NOT NULL AND assigned_at < NOW() - INTERVAL '1 minute' * $1`,
+      [bigBrainTimeoutMinutes]
+    );
     return 0;
   } catch (e) {
     console.error('[queue-processor]', e.message);
@@ -280,10 +268,9 @@ async function evaluateAndExecutePrompts() {
               }).catch(() => null);
 
               if (!response || !response.ok) {
-                const sid = `t${Date.now()}_${Math.floor(Math.random() * 10000)}`;
                 await pool.query(
-                  `INSERT INTO tasks (id, text, col, tag, complexity, updated_at) VALUES ($1, $2, 'todo', 'queue-processor', 'medium', NOW())`,
-                  [sid, `[Scheduled] ${schedule.prompt_text}`]
+                  `INSERT INTO queue_items (text) VALUES ($1)`,
+                  [`[Scheduled] ${schedule.prompt_text}`]
                 );
               }
             }
@@ -472,17 +459,17 @@ app.post('/api/chat', async (req, res) => {
       const model = (await getPreferredModel()).replace(/^anthropic\//, '');
       // Inject live task + queue context
       const { rows: taskRows } = await pool.query(`SELECT id, text, col, tag, start_date, meta FROM tasks ORDER BY updated_at DESC LIMIT 50`);
-      const { rows: queueRows } = await pool.query(`SELECT id, text, col FROM tasks WHERE tag='queue-processor' ORDER BY updated_at DESC LIMIT 30`);
+      const { rows: queueRows } = await pool.query(`SELECT id, text, done FROM queue_items ORDER BY created_at DESC LIMIT 30`);
       let liveContext = '\n\n## Live Task Board\n';
       if (taskRows.length) {
         liveContext += taskRows.map(t => `- [${t.col}] ${t.text}${t.tag ? ` (${t.tag})` : ''}${t.start_date ? ` 📅${t.start_date}` : ''}${t.meta ? ` — ${t.meta.slice(0,100)}` : ''}`).join('\n');
       } else { liveContext += 'No tasks.\n'; }
       liveContext += '\n\n## Queue Items\n';
-      const pending = queueRows.filter(q => q.col !== 'done');
-      const done = queueRows.filter(q => q.col === 'done');
-      if (pending.length) { liveContext += 'Pending:\n' + pending.map(q => `- ${q.id}: ${q.text} [${q.col}]`).join('\n'); }
+      const pending = queueRows.filter(q => !q.done);
+      const done = queueRows.filter(q => q.done);
+      if (pending.length) { liveContext += 'Pending:\n' + pending.map(q => `- #${q.id}: ${q.text}`).join('\n'); }
       else { liveContext += 'No pending items.\n'; }
-      if (done.length) { liveContext += `\nRecently processed (${done.length}):\n` + done.slice(0,10).map(q => `- ${q.id}: ${q.text} ✓`).join('\n'); }
+      if (done.length) { liveContext += `\nRecently processed (${done.length}):\n` + done.slice(0,10).map(q => `- #${q.id}: ${q.text} ✓`).join('\n'); }
       const systemWithContext = JACK_SYSTEM + liveContext;
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -725,80 +712,58 @@ app.get('/api/queue-next', requireAccess, async (req, res) => {
 });
 
 // ── Queue ───────────────────────────────────────────────────────────────────
-// Tasks are now written directly to the tasks table (no todos intermediary).
+// Queue items live in queue_items table — completely separate from tasks.
 app.get('/api/queue', requireAccess, async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT id, text, col AS status, start_date, updated_at AS created_at FROM tasks WHERE tag='queue-processor' AND col != 'done' ORDER BY updated_at ASC`
-  );
+  const { rows } = await pool.query(`SELECT * FROM queue_items ORDER BY created_at ASC`);
   res.json(rows);
 });
 
 app.post('/api/queue', requireAccess, async (req, res) => {
   const { text, start_date } = req.body || {};
   if (!text?.trim()) return res.status(400).json({ error: 'text required' });
-  const id = `t${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-  const complexity = estimateComplexity(text.trim());
   const { rows } = await pool.query(
-    `INSERT INTO tasks (id, text, col, tag, start_date, complexity, updated_at) VALUES ($1, $2, 'todo', 'queue-processor', $3, $4, NOW()) RETURNING *`,
-    [id, text.trim(), start_date || null, complexity]
+    `INSERT INTO queue_items (text, start_date) VALUES ($1, $2) RETURNING *`,
+    [text.trim(), start_date || null]
   );
   res.status(201).json(rows[0]);
 });
 
 app.patch('/api/queue/:id', requireAccess, async (req, res) => {
   const { done } = req.body || {};
-  const newCol = done ? 'done' : 'todo';
-  const { rows } = await pool.query(`UPDATE tasks SET col=$1, updated_at=NOW() WHERE id=$2 AND tag='queue-processor' RETURNING *`, [newCol, req.params.id]);
+  const { rows } = await pool.query(`UPDATE queue_items SET done=$1 WHERE id=$2 RETURNING *`, [!!done, req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);
 });
 
 app.delete('/api/queue/:id', requireAccess, async (req, res) => {
-  await pool.query(`DELETE FROM tasks WHERE id=$1 AND tag='queue-processor'`, [req.params.id]);
+  await pool.query(`DELETE FROM queue_items WHERE id=$1`, [req.params.id]);
   res.json({ ok: true });
 });
 
 // ── Queue processor (legacy compat — delegates to shared functions) ─────────
-// Queue intake now runs automatically via server-side timer (startQueueProcessor).
-// This endpoint is kept for backward compatibility but just triggers intake + picks next task.
+// Resets stale queue items, claims next pending one, returns it to the worker.
 app.post('/api/queue-process', requireAccess, async (req, res) => {
   try {
-    // Run intake (usually already done by timer, but safe to call again)
-    const created = await processQueueIntake();
+    await processQueueIntake(); // reset stale
 
-    // Pick next task (same logic as GET /api/queue-next)
-    const { rows: active } = await pool.query(`SELECT * FROM tasks WHERE col='active' LIMIT 1`);
-    let activeTask = active[0] || null;
-
-    if (!activeTask) {
-      // Atomically claim the next todo task (prevents race between concurrent workers)
-      // Tasks with depends_on are only eligible if the dependency task is done
-      const { rows: claimed } = await pool.query(
-        `UPDATE tasks SET col='active', assigned_to='queue-worker', assigned_at=NOW()
-         WHERE id = (
-           SELECT id FROM tasks
-           WHERE col='todo' AND (start_date IS NULL OR start_date <= CURRENT_DATE)
-             AND (depends_on IS NULL OR EXISTS (SELECT 1 FROM tasks dep WHERE dep.id = tasks.depends_on AND dep.col = 'done'))
-           ORDER BY priority DESC, updated_at ASC
-           LIMIT 1
-           FOR UPDATE SKIP LOCKED
-         )
-         RETURNING *`
-      );
-      if (claimed.length) {
-        await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [claimed[0].id, '🚀 Task picked up by queue-worker']);
-        activeTask = claimed[0];
-      }
-    }
+    // Atomically claim the next pending queue item
+    const { rows: claimed } = await pool.query(
+      `UPDATE queue_items SET assigned_at=NOW()
+       WHERE id = (
+         SELECT id FROM queue_items
+         WHERE done=false AND assigned_at IS NULL
+           AND (start_date IS NULL OR start_date <= CURRENT_DATE)
+         ORDER BY created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING *`
+    );
 
     res.json({
       ok: true,
-      queued: 0,
-      batches: 0,
-      tasksCreated: created,
-      activeTask,
-      littleBrainModel,
-      timeouts: { big: bigBrainTimeoutMinutes, little: littleBrainTimeoutMinutes }
+      activeTask: claimed[0] || null,
+      timeouts: { big: bigBrainTimeoutMinutes }
     });
   } catch (e) {
     console.error('[queue-process]', e.message);
@@ -827,9 +792,7 @@ app.post('/api/queue-timeouts', requireAccess, async (req, res) => {
 // ── Health ──────────────────────────────────────────────────────────────────
 app.get('/api/health', requireAccess, async (req, res) => {
   const { rows: tasks } = await pool.query(`SELECT id, col FROM tasks`);
-  const { rows: queue } = await pool.query(`SELECT id FROM tasks WHERE tag='queue-processor' AND col='todo'`);
-  // Auto-reset orphaned active tasks (no heartbeat in 2h)
-  await pool.query(`UPDATE tasks SET col='todo', assigned_to=NULL, assigned_at=NULL, updated_at=NOW() WHERE col='active' AND (assigned_at IS NULL OR assigned_at < NOW() - INTERVAL '2 hours')`);
+  const { rows: queue } = await pool.query(`SELECT id FROM queue_items WHERE done=false`);
   res.json({ ok: true, tasks: tasks.length, queuePending: queue.length, checkedAt: new Date().toISOString() });
 });
 
@@ -1026,11 +989,9 @@ app.post('/api/prompt-execute', requireAccess, async (req, res) => {
   }
 
   try {
-    // Queue directly into tasks (no todos intermediary)
-    const pid = `t${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     const { rows } = await pool.query(
-      `INSERT INTO tasks (id, text, col, tag, complexity, updated_at) VALUES ($1, $2, 'todo', 'queue-processor', 'medium', NOW()) RETURNING *`,
-      [pid, `[Scheduled] ${prompt_text}`]
+      `INSERT INTO queue_items (text) VALUES ($1) RETURNING *`,
+      [`[Scheduled] ${prompt_text}`]
     );
 
     res.json({ ok: true, queued: true, queue_item: rows[0] });
