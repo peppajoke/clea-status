@@ -760,6 +760,9 @@ app.post('/api/queue-process', requireAccess, async (req, res) => {
       await pool.query(`INSERT INTO task_logs (task_id, message) VALUES ($1, $2)`, [claimed[0].id, '🚀 Picked up by queue-worker']);
     }
 
+    // Signal the run-now-poller to fire the worker cron immediately
+    if (claimed[0] || active[0]) await persistState('plannerTriggerPending', 'true');
+
     res.json({ ok: true, activeTask: claimed[0] || null });
   } catch (e) {
     console.error('[queue-process]', e.message);
