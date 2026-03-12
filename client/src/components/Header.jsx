@@ -38,27 +38,31 @@ export default function Header({ authenticated }) {
 
   return (
     <header className="header">
-      <div className="header-brand">
-        <NavLink to="/" className="header-logo">Clea</NavLink>
-        {s && (
-          <span className="header-status">
-            <span className={`header-status-dot ${s.pulse ? 'pulse' : ''}`} style={{ background: s.color }} />
-            <span className="header-status-label" style={{ color: s.color }}>{s.label}</span>
-          </span>
-        )}
+      <div className="header-top">
+        <div className="header-brand">
+          <NavLink to="/" className="header-logo">Clea</NavLink>
+          {s && (
+            <span className="header-status">
+              <span className={`header-status-dot ${s.pulse ? 'pulse' : ''}`} style={{ background: s.color }} />
+              <span className="header-status-label" style={{ color: s.color }}>{s.label}</span>
+            </span>
+          )}
+        </div>
       </div>
-      <nav className="header-nav">
-        {navItems.map(item => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === '/' || item.path === '/settings'}
-            className={({ isActive }) => `header-link ${isActive ? 'header-link-active' : ''}`}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="header-nav-wrap">
+        <nav className="header-nav">
+          {navItems.map(item => (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              end={item.path === '/' || item.path === '/settings'}
+              className={({ isActive }) => `header-link ${isActive ? 'header-link-active' : ''}`}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+      </div>
     </header>
   )
 }
