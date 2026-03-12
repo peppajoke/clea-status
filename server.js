@@ -520,6 +520,9 @@ app.post('/api/tasks', requireAccess, async (req, res) => {
     `INSERT INTO tasks (id, text, col, complexity, start_date, updated_at) VALUES ($1, $2, 'todo', $3, $4, NOW()) RETURNING *`,
     [id, text.trim(), complexity, start_date || null]
   );
+  // If nothing is active, flag for immediate pickup
+  const { rows: active } = await pool.query(`SELECT id FROM tasks WHERE col='active' LIMIT 1`);
+  if (!active.length) await persistState('plannerTriggerPending', 'true');
   res.status(201).json({ id: rows[0].id, title: rows[0].text, col: rows[0].col });
 });
 
