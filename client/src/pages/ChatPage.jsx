@@ -63,7 +63,7 @@ export default function ChatPage({ onAuth }) {
       <div className="chat-messages">
         {messages.length === 0 && !loading && (
           <div className="chat-landing">
-            <div className="chat-landing-icon">◈</div>
+            <img src="/clea.png" alt="Clea" className="chat-landing-avatar" />
             <div className="chat-landing-text">Talk to Clea</div>
             <div className="chat-landing-sub">Public chat · no auth required</div>
           </div>

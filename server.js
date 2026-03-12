@@ -331,6 +331,7 @@ app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use('/designs', express.static(path.join(__dirname, 'public', 'designs')));
+app.get('/clea.png', (req, res) => res.sendFile(path.join(__dirname, 'clea.png')));
 
 function isAuthenticated(req) {
   try { jwt.verify(req.cookies?.clea_session, JWT_SECRET); return true; } catch { return false; }

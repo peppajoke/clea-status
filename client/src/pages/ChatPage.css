@@ -24,9 +24,13 @@
   opacity: 0.5;
 }
 
-.chat-landing-icon {
-  font-size: 48px;
-  color: var(--cyan);
+.chat-landing-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--cyan);
+  opacity: 0.85;
 }
 
 .chat-landing-text {
