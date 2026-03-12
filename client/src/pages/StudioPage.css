@@ -9,6 +9,61 @@
   margin-bottom: 1rem;
 }
 
+.studio-engine-picker {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.engine-btn {
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--border, #333);
+  border-radius: 20px;
+  padding: 0.35rem 0.85rem;
+  color: var(--text-muted, #888);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.engine-btn:hover:not(:disabled) {
+  border-color: var(--accent, #6366f1);
+  color: var(--text, #fff);
+}
+
+.engine-btn.active {
+  background: var(--accent, #6366f1);
+  border-color: var(--accent, #6366f1);
+  color: #fff;
+  font-weight: 600;
+}
+
+.engine-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.engine-desc {
+  font-size: 0.78rem;
+  color: var(--text-muted, #666);
+  margin-left: 0.25rem;
+  font-style: italic;
+}
+
+.studio-method-badge {
+  font-size: 0.78rem;
+  color: var(--text-muted, #666);
+  margin-bottom: 0.75rem;
+  padding: 0.3rem 0.75rem;
+  background: var(--surface, #1a1a1a);
+  border: 1px solid var(--border, #2a2a2a);
+  border-radius: 20px;
+  display: inline-block;
+}
+
 .studio-input-row {
   display: flex;
   gap: 0.5rem;

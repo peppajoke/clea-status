@@ -13,6 +13,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { generateDesign } from './design-generator.js';
 import { generateDesignLLM } from './design-llm.js';
+import { generateDesignDALLE } from './design-openai.js';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1340,32 +1341,59 @@ app.delete('/api/studio-designs/:id', requireAccess, async (req, res) => {
 // Generate a design from a prompt
 app.post('/api/generate-design', requireAccess, async (req, res) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, engine } = req.body;
     if (!prompt) return res.status(400).json({ error: 'prompt required' });
+
+    // engine: 'auto' (default) | 'llm' | 'dalle' | 'canvas'
+    const requestedEngine = engine || 'auto';
 
     const designsDir = path.join(__dirname, 'public', 'designs');
     if (!fs.existsSync(designsDir)) fs.mkdirSync(designsDir, { recursive: true });
 
-    // Generate a unique filename
     const slug = prompt.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
     const id = Date.now().toString(36);
     const filename = `studio-${slug}-${id}.png`;
     const filepath = path.join(designsDir, filename);
 
-    // Try LLM generation first (reads little brain model from DB), fall back to canvas templates
     let pngBuffer;
     let generationMethod = 'template';
-    try {
-      // Get little brain model setting
-      const { rows: brainRows } = await pool.query(
-        "SELECT value FROM node_state WHERE key = 'littleBrainModel'"
-      );
-      const brainModel = brainRows[0]?.value || 'haiku';
-      pngBuffer = await generateDesignLLM(prompt, brainModel);
-      generationMethod = 'llm';
-    } catch (llmErr) {
-      console.warn('[design] LLM generation failed, falling back to templates:', llmErr.message);
+
+    if (requestedEngine === 'dalle') {
+      // DALL-E 3 generation (explicit)
+      pngBuffer = await generateDesignDALLE(prompt);
+      generationMethod = 'dalle';
+    } else if (requestedEngine === 'canvas') {
+      // Canvas templates only (explicit)
       pngBuffer = generateDesign(prompt);
+      generationMethod = 'template';
+    } else if (requestedEngine === 'llm') {
+      // LLM SVG only (explicit, with canvas fallback)
+      try {
+        const { rows: brainRows } = await pool.query(
+          "SELECT value FROM node_state WHERE key = 'littleBrainModel'"
+        );
+        const brainModel = brainRows[0]?.value || 'haiku';
+        pngBuffer = await generateDesignLLM(prompt, brainModel);
+        generationMethod = 'llm';
+      } catch (llmErr) {
+        console.warn('[design] LLM generation failed, falling back to templates:', llmErr.message);
+        pngBuffer = generateDesign(prompt);
+        generationMethod = 'template';
+      }
+    } else {
+      // Auto: try LLM first, fall back to canvas
+      try {
+        const { rows: brainRows } = await pool.query(
+          "SELECT value FROM node_state WHERE key = 'littleBrainModel'"
+        );
+        const brainModel = brainRows[0]?.value || 'haiku';
+        pngBuffer = await generateDesignLLM(prompt, brainModel);
+        generationMethod = 'llm';
+      } catch (llmErr) {
+        console.warn('[design] LLM generation failed, falling back to templates:', llmErr.message);
+        pngBuffer = generateDesign(prompt);
+        generationMethod = 'template';
+      }
     }
 
     // Write PNG to file

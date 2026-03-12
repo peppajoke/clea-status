@@ -9,11 +9,20 @@ const PRODUCT_TYPES = [
   { id: 'mug', label: '☕ Mug', price: '$16.95' },
 ]
 
+const ENGINES = [
+  { id: 'auto', label: '⚡ Auto', desc: 'LLM SVG → canvas fallback' },
+  { id: 'dalle', label: '🎨 DALL-E 3', desc: 'OpenAI image generation (best quality)' },
+  { id: 'llm', label: '🤖 LLM SVG', desc: 'Claude generates SVG graphic' },
+  { id: 'canvas', label: '📐 Canvas', desc: 'Fast template-based generation' },
+]
+
 export default function StudioPage() {
   const [prompt, setPrompt] = useState('')
+  const [engine, setEngine] = useState('auto')
   const [generating, setGenerating] = useState(false)
   const [imageUrl, setImageUrl] = useState(null)
   const [activeDesignId, setActiveDesignId] = useState(null)
+  const [lastMethod, setLastMethod] = useState(null)
   const [publishing, setPublishing] = useState(null)
   const [published, setPublished] = useState([])
   const [error, setError] = useState(null)
@@ -39,16 +48,18 @@ export default function StudioPage() {
     setImageUrl(null)
     setActiveDesignId(null)
     setPublished([])
+    setLastMethod(null)
     try {
       const res = await fetch('/api/generate-design', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: prompt.trim() })
+        body: JSON.stringify({ prompt: prompt.trim(), engine })
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
       setImageUrl(data.imageUrl || data.image_url)
       setActiveDesignId(data.id)
+      setLastMethod(data.method)
       // Prepend to saved designs list
       setDesigns(prev => [data, ...prev])
     } catch (e) {
@@ -119,6 +130,21 @@ export default function StudioPage() {
         <h1>🎨 Design Studio</h1>
       </div>
 
+      <div className="studio-engine-picker">
+        {ENGINES.map(e => (
+          <button
+            key={e.id}
+            className={`engine-btn ${engine === e.id ? 'active' : ''}`}
+            onClick={() => setEngine(e.id)}
+            title={e.desc}
+            disabled={generating}
+          >
+            {e.label}
+          </button>
+        ))}
+        <span className="engine-desc">{ENGINES.find(e => e.id === engine)?.desc}</span>
+      </div>
+
       <div className="studio-input-row">
         <input
           className="studio-prompt"
@@ -130,11 +156,17 @@ export default function StudioPage() {
           disabled={generating}
         />
         <button className="studio-btn generate" onClick={generate} disabled={!prompt.trim() || generating}>
-          {generating ? '⏳ Generating...' : '⚡ Generate'}
+          {generating ? (engine === 'dalle' ? '🎨 Generating...' : '⏳ Generating...') : '⚡ Generate'}
         </button>
       </div>
 
       {error && <div className="studio-error">{error}</div>}
+
+      {lastMethod && (
+        <div className="studio-method-badge">
+          Generated via: {lastMethod === 'dalle' ? '🎨 DALL-E 3' : lastMethod === 'llm' ? '🤖 LLM SVG' : '📐 Canvas'}
+        </div>
+      )}
 
       {imageUrl && (
         <div className="studio-preview">
