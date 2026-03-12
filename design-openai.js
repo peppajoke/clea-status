@@ -127,7 +127,6 @@ async function callDalle(prompt) {
 // ── Download image ────────────────────────────────────────────────────────────
 async function downloadImage(url) {
   return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : (await import('http')).default;
     const req = https.get(url, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         // Follow redirect
