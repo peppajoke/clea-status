@@ -45,7 +45,7 @@ export default function TasksPage() {
         })
     }
     if (tab === 'blocked') return tasks.filter(t => ['blocked', 'failed', 'rejected'].includes(t.col))
-    if (tab === 'done') return tasks.filter(t => t.col === 'done').slice(0, 50)
+    if (tab === 'done') return tasks.filter(t => t.col === 'done').sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 50)
     return []
   })()
 
