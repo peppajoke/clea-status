@@ -91,10 +91,10 @@
 }
 
 .home-app-icon {
-  font-size: 1.8rem;
+  font-size: 2.6rem;
   line-height: 1;
   color: var(--app-color, #22d3ee);
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--app-color, #22d3ee) 40%, transparent));
+  filter: drop-shadow(0 0 10px color-mix(in srgb, var(--app-color, #22d3ee) 40%, transparent));
 }
 
 .home-app-label {
