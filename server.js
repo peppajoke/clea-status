@@ -1314,6 +1314,21 @@ app.get('/api/studio-designs', requireAccess, async (req, res) => {
   }
 });
 
+// Serve design image from DB (fallback when filesystem is ephemeral)
+app.get('/api/studio-designs/:id/image', requireAccess, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await pool.query('SELECT image_data FROM studio_designs WHERE id = $1', [id]);
+    if (!rows.length || !rows[0].image_data) return res.status(404).json({ error: 'Image not found' });
+    const buf = Buffer.from(rows[0].image_data, 'base64');
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Delete a design by ID
 app.delete('/api/studio-designs/:id', requireAccess, async (req, res) => {
   try {
@@ -1397,16 +1412,17 @@ app.post('/api/generate-design', requireAccess, async (req, res) => {
       }
     }
 
-    // Write PNG to file
+    // Write PNG to file (best-effort — Railway filesystem is ephemeral)
     const fs2 = await import('fs/promises');
-    await fs2.writeFile(filepath, pngBuffer);
+    await fs2.writeFile(filepath, pngBuffer).catch(() => {});
 
     const imageUrl = '/designs/' + filename;
 
-    // Persist to DB
+    // Persist to DB — also store base64 image data for persistence across deploys
+    const imageData = pngBuffer.toString('base64');
     const { rows } = await pool.query(
-      'INSERT INTO studio_designs (prompt, image_url) VALUES ($1, $2) RETURNING *',
-      [prompt.trim(), imageUrl]
+      'INSERT INTO studio_designs (prompt, image_url, image_data) VALUES ($1, $2, $3) RETURNING *',
+      [prompt.trim(), imageUrl, imageData]
     );
 
     res.json({ ...rows[0], imageUrl, title: prompt.trim(), method: generationMethod });
@@ -1427,7 +1443,24 @@ app.post('/api/publish-design', requireAccess, async (req, res) => {
     if (!studioKey) return res.status(503).json({ error: 'STUDIO_API_KEY not configured' });
 
     // Build full URL for the design image
-    const fullImageUrl = imageUrl.startsWith('http') ? imageUrl : 'https://clea.chat' + imageUrl;
+    // If it's the DB endpoint path, write to disk so Printify can access it publicly
+    let resolvedImageUrl = imageUrl;
+    if (imageUrl.startsWith('/api/studio-designs/') && imageUrl.endsWith('/image')) {
+      const designId = imageUrl.split('/')[3];
+      const { rows: designRows } = await pool.query('SELECT * FROM studio_designs WHERE id = $1', [designId]);
+      if (designRows.length && designRows[0].image_data) {
+        const designsDir = path.join(__dirname, 'public', 'designs');
+        if (!fs.existsSync(designsDir)) fs.mkdirSync(designsDir, { recursive: true });
+        const designFilename = `studio-publish-${designId}.png`;
+        const designFilepath = path.join(designsDir, designFilename);
+        const fs2 = await import('fs/promises');
+        await fs2.writeFile(designFilepath, Buffer.from(designRows[0].image_data, 'base64'));
+        resolvedImageUrl = '/designs/' + designFilename;
+      } else if (designRows.length && designRows[0].image_url) {
+        resolvedImageUrl = designRows[0].image_url;
+      }
+    }
+    const fullImageUrl = resolvedImageUrl.startsWith('http') ? resolvedImageUrl : 'https://clea.chat' + resolvedImageUrl;
 
     const payload = {
       title: title || 'Custom Design',

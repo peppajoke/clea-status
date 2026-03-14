@@ -57,9 +57,10 @@ export default function StudioPage() {
       })
       const data = await res.json()
       if (data.error) { setError(data.error); return }
-      setImageUrl(data.imageUrl || data.image_url)
       setActiveDesignId(data.id)
       setLastMethod(data.method)
+      // Use DB endpoint for image (persistent across Railway deploys)
+      setImageUrl(data.id ? `/api/studio-designs/${data.id}/image` : (data.imageUrl || data.image_url))
       // Prepend to saved designs list
       setDesigns(prev => [data, ...prev])
     } catch (e) {
@@ -116,9 +117,16 @@ export default function StudioPage() {
     }
   }
 
+  // Get the best available image URL for a design
+  // Prefer the DB-backed endpoint (persistent across deploys) over the ephemeral file path
+  const getDesignImageUrl = (design) => {
+    if (design.id) return `/api/studio-designs/${design.id}/image`
+    return design.image_url || design.imageUrl
+  }
+
   const loadDesign = (design) => {
     setPrompt(design.prompt)
-    setImageUrl(design.image_url || design.imageUrl)
+    setImageUrl(getDesignImageUrl(design))
     setActiveDesignId(design.id)
     setPublished([])
     setError(null)
@@ -215,7 +223,7 @@ export default function StudioPage() {
                 onClick={() => loadDesign(d)}
               >
                 <div className="design-card-img">
-                  <img src={d.image_url || d.imageUrl} alt={d.prompt} />
+                  <img src={getDesignImageUrl(d)} alt={d.prompt} />
                   <button
                     className="design-delete-btn"
                     onClick={(e) => deleteDesign(d.id, e)}
