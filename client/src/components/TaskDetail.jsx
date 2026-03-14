@@ -68,6 +68,7 @@ export default function TaskDetail({ task, onClose, onRefresh }) {
               value={form.text}
               onChange={e => set('text', e.target.value)}
               rows={3}
+              autoFocus
             />
           </label>
 
