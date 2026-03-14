@@ -7,7 +7,7 @@ import StatusBar from '../components/StatusBar'
 import './TasksPage.css'
 
 const TABS = [
-  { key: 'execution', label: 'Execution' },
+  { key: 'execution', label: 'In Progress' },
   { key: 'blocked', label: 'Blocked' },
   { key: 'done', label: 'Done' },
 ]
