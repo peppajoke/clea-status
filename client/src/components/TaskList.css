@@ -70,3 +70,50 @@
 }
 .task-card:hover .task-card-delete { opacity: 1; }
 .task-card-delete:hover { color: var(--red); }
+
+/* Active task — inline logs */
+.task-card-active {
+  border-color: var(--cyan-dim);
+}
+
+.task-card-logs {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.task-card-logs-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.task-card-logs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.task-card-log-entry {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.task-card-log-time {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.task-card-log-msg {
+  font-size: 11px;
+  color: var(--text-dim);
+  word-break: break-word;
+  line-height: 1.4;
+}
