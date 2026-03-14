@@ -47,7 +47,7 @@ export default function PortfolioPage() {
   const { account, positions, pnl } = data
 
   const unrealizedTotal = positions.reduce((s, p) => s + p.unrealizedPl, 0)
-  const unrealizedPct = positions.reduce((s, p) => s + (p.unrealizedPlPc || 0), 0) / Math.max(positions.length, 1)
+  const totalPnl = unrealizedTotal + (pnl.realized || 0)
 
   return (
     <div className="port-page">
