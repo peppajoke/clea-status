@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchTasks, fetchWorkStatus, addTask } from '../api'
+import { fetchTasks, addTask } from '../api'
 import TaskList from '../components/TaskList'
 import TaskDetail from '../components/TaskDetail'
 import QueueInput from '../components/QueueInput'
-import StatusBar from '../components/StatusBar'
 import './TasksPage.css'
 
 const TABS = [
@@ -14,15 +13,13 @@ const TABS = [
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([])
-  const [status, setStatus] = useState(null)
   const [tab, setTab] = useState('execution')
   const [selectedTask, setSelectedTask] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
-    const [t, s] = await Promise.all([fetchTasks(), fetchWorkStatus()])
+    const t = await fetchTasks()
     setTasks(t)
-    setStatus(s)
     setLoading(false)
   }, [])
 
@@ -62,10 +59,6 @@ export default function TasksPage() {
 
   return (
     <div className="tasks-page">
-      <div className="tasks-toolbar">
-        <StatusBar status={status} />
-      </div>
-
       <div className="tabs">
         {TABS.map(t => (
           <button
