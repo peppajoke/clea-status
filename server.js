@@ -1616,10 +1616,14 @@ app.get('/api/portfolio', requireAccess, async (req, res) => {
       ? historyEquity.find(v => v > 0) || 0
       : 0;
 
-    // Compute realized P&L from filled sell orders
-    const sells = Array.isArray(orders)
-      ? orders.filter(o => o.side === 'sell' && o.status === 'filled')
+    // Filter out trades filled before 2026
+    const CUT_DATE = new Date('2026-01-01T00:00:00Z');
+    const orders2026 = Array.isArray(orders)
+      ? orders.filter(o => o.filled_at && new Date(o.filled_at) >= CUT_DATE)
       : [];
+
+    // Compute realized P&L from filled sell orders
+    const sells = orders2026.filter(o => o.side === 'sell' && o.status === 'filled');
 
     let realizedPnl = 0;
     let wins = 0, losses = 0;
@@ -1639,10 +1643,8 @@ app.get('/api/portfolio', requireAccess, async (req, res) => {
     });
 
     // Also include buys in recent trades
-    const buys = Array.isArray(orders)
-      ? orders.filter(o => o.side === 'buy' && o.status === 'filled').slice(0, 20)
-      : [];
-    const allRecentOrders = [...orders.filter(o => o.status === 'filled')]
+    const buys = orders2026.filter(o => o.side === 'buy' && o.status === 'filled').slice(0, 20);
+    const allRecentOrders = [...orders2026.filter(o => o.status === 'filled')]
       .slice(0, 20)
       .map(o => ({
         action:   o.side,
@@ -1678,7 +1680,7 @@ app.get('/api/portfolio', requireAccess, async (req, res) => {
       pnl: {
         unrealized:   unrealizedTotal,
         realized:     realizedPnl,
-        totalFilled:  Array.isArray(orders) ? orders.filter(o => o.status === 'filled').length : 0,
+        totalFilled:  orders2026.filter(o => o.status === 'filled').length,
       },
       recentTrades: allRecentOrders,
     });
