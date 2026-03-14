@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { fetchTasks, fetchWorkStatus, processQueue, addTask } from '../api'
+import { fetchTasks, fetchWorkStatus, addTask } from '../api'
 import TaskList from '../components/TaskList'
 import TaskDetail from '../components/TaskDetail'
 import QueueInput from '../components/QueueInput'
@@ -28,7 +28,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     refresh()
-    const interval = setInterval(refresh, 30000)
+    const interval = setInterval(refresh, 15000)
     return () => clearInterval(interval)
   }, [refresh])
 
@@ -55,12 +55,6 @@ export default function TasksPage() {
     done: tasks.filter(t => t.col === 'done').length,
   }
 
-  const handleStartWork = async () => {
-    await processQueue()
-    await refresh()
-    setTab('execution')
-  }
-
   const handleTaskAdd = async (text, startDate) => {
     await addTask(text, startDate)
     refresh()
@@ -70,10 +64,6 @@ export default function TasksPage() {
     <div className="tasks-page">
       <div className="tasks-toolbar">
         <StatusBar status={status} />
-        <div className="tasks-actions">
-          <button className="btn btn-primary" onClick={handleStartWork}>⚡ Start Work</button>
-          <button className="btn btn-ghost" onClick={refresh}>↻</button>
-        </div>
       </div>
 
       <div className="tabs">
