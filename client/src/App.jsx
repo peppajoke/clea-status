@@ -14,19 +14,22 @@ import './App.css'
 
 export const AuthContext = createContext({ authenticated: false, setAuthenticated: () => {} })
 
-function ProtectedRoute({ children, authenticated }) {
+function ProtectedRoute({ children, authenticated, ready }) {
+  if (!ready) return null                          // wait for auth check
   if (!authenticated) return <Navigate to="/" replace />
   return children
 }
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState(false)
+  const [authReady, setAuthReady] = useState(false)
 
   useEffect(() => {
     fetch('/api/auth/status')
       .then(r => r.json())
       .then(d => setAuthenticated(!!d.authenticated))
       .catch(() => {})
+      .finally(() => setAuthReady(true))
   }, [])
 
   return (
@@ -35,17 +38,17 @@ export default function App() {
         <Header authenticated={authenticated} />
         <Routes>
           <Route path="/" element={
-            authenticated
-              ? <HomePage />
-              : <ChatPage onAuth={() => setAuthenticated(true)} />
+            !authReady ? null :
+            authenticated ? <HomePage /> :
+            <ChatPage onAuth={() => setAuthenticated(true)} />
           } />
-          <Route path="/tasks" element={<ProtectedRoute authenticated={authenticated}><TasksPage /></ProtectedRoute>} />
-          <Route path="/links" element={<ProtectedRoute authenticated={authenticated}><LinksPage /></ProtectedRoute>} />
-          <Route path="/scheduler" element={<ProtectedRoute authenticated={authenticated}><SchedulerPage /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute authenticated={authenticated}><SettingsPage /></ProtectedRoute>} />
-          <Route path="/ideas" element={<ProtectedRoute authenticated={authenticated}><IdeasPage /></ProtectedRoute>} />
-          <Route path="/studio" element={<ProtectedRoute authenticated={authenticated}><StudioPage /></ProtectedRoute>} />
-          <Route path="/portfolio" element={<ProtectedRoute authenticated={authenticated}><PortfolioPage /></ProtectedRoute>} />
+          <Route path="/tasks"     element={<ProtectedRoute authenticated={authenticated} ready={authReady}><TasksPage /></ProtectedRoute>} />
+          <Route path="/links"     element={<ProtectedRoute authenticated={authenticated} ready={authReady}><LinksPage /></ProtectedRoute>} />
+          <Route path="/scheduler" element={<ProtectedRoute authenticated={authenticated} ready={authReady}><SchedulerPage /></ProtectedRoute>} />
+          <Route path="/settings"  element={<ProtectedRoute authenticated={authenticated} ready={authReady}><SettingsPage /></ProtectedRoute>} />
+          <Route path="/ideas"     element={<ProtectedRoute authenticated={authenticated} ready={authReady}><IdeasPage /></ProtectedRoute>} />
+          <Route path="/studio"    element={<ProtectedRoute authenticated={authenticated} ready={authReady}><StudioPage /></ProtectedRoute>} />
+          <Route path="/portfolio" element={<ProtectedRoute authenticated={authenticated} ready={authReady}><PortfolioPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
