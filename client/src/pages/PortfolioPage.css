@@ -1,0 +1,264 @@
+.port-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.port-loading, .port-error, .port-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.port-error { color: var(--red, #f87171); }
+
+/* ── Hero ── */
+.port-hero {
+  background: var(--surface, #1a1a2e);
+  border: 1px solid var(--border, #2a2a3e);
+  border-radius: 12px;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.port-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.port-hero-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+}
+
+.port-hero-value {
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--text, #eee);
+  line-height: 1;
+}
+
+.port-hero-delta {
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+/* ── Stat row ── */
+.port-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  border-top: 1px solid var(--border, #2a2a3e);
+  padding-top: 1.25rem;
+}
+
+.port-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.port-stat-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted, #888);
+}
+
+.port-stat-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text, #eee);
+}
+
+.port-stat-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  font-weight: 400;
+}
+
+/* ── Colour helpers ── */
+.positive { color: var(--green, #4ade80) !important; }
+.negative { color: var(--red, #f87171) !important; }
+.neutral  { color: var(--text-muted, #888) !important; }
+
+/* ── Sections ── */
+.port-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.port-section-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #888);
+  font-weight: 600;
+  margin: 0;
+}
+
+/* ── Positions ── */
+.port-positions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.port-position {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--surface, #1a1a2e);
+  border: 1px solid var(--border, #2a2a3e);
+  border-radius: 8px;
+  padding: 0.85rem 1.1rem;
+}
+
+.port-pos-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 110px;
+}
+
+.port-pos-symbol {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text, #eee);
+  font-family: monospace;
+}
+
+.port-pos-qty {
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+}
+
+.port-pos-mid {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  font-size: 0.85rem;
+}
+
+.port-pos-price-label {
+  font-size: 0.7rem;
+  color: var(--text-muted, #888);
+  margin-right: 0.15rem;
+}
+
+.port-pos-arrow {
+  color: var(--text-muted, #888);
+}
+
+.port-pos-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+}
+
+.port-pos-pnl {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.port-pos-pct {
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* ── Trades ── */
+.port-trades {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.port-trade {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: var(--surface, #1a1a2e);
+  border: 1px solid var(--border, #2a2a3e);
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+  font-size: 0.83rem;
+  flex-wrap: wrap;
+}
+
+.port-trade-action {
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  min-width: 36px;
+  text-align: center;
+}
+.port-trade-action.buy  { background: rgba(74, 222, 128, 0.15); color: var(--green, #4ade80); }
+.port-trade-action.sell { background: rgba(248, 113, 113, 0.15); color: var(--red, #f87171); }
+
+.port-trade-symbol {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--text, #eee);
+  min-width: 80px;
+}
+
+.port-trade-mode {
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+}
+
+.port-trade-detail {
+  flex: 1;
+}
+
+.port-trade-reason {
+  font-size: 0.75rem;
+  color: var(--text-muted, #888);
+  font-style: italic;
+}
+
+.port-trade-time {
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+  margin-left: auto;
+}
+
+/* ── Footer ── */
+.port-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.72rem;
+  color: var(--text-muted, #888);
+}
+
+.port-refresh {
+  background: none;
+  border: 1px solid var(--border, #2a2a3e);
+  color: var(--text-muted, #888);
+  border-radius: 4px;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.port-refresh:hover { color: var(--text, #eee); border-color: var(--text-muted, #888); }
+
+@media (max-width: 600px) {
+  .port-stats-row { grid-template-columns: repeat(2, 1fr); }
+  .port-hero-value { font-size: 2rem; }
+  .port-pos-mid { display: none; }
+}

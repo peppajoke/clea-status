@@ -1587,6 +1587,73 @@ app.delete('/api/shirt-ideas/:id', requireAccess, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── Trading Portfolio API ───────────────────────────────────────────────────
+app.get('/api/portfolio', requireAccess, async (req, res) => {
+  try {
+    const ALPACA_KEY    = process.env.ALPACA_API_KEY;
+    const ALPACA_SECRET = process.env.ALPACA_API_SECRET;
+    if (!ALPACA_KEY || !ALPACA_SECRET) return res.status(503).json({ error: 'Alpaca keys not configured' });
+
+    const headers = {
+      'APCA-API-KEY-ID':     ALPACA_KEY,
+      'APCA-API-SECRET-KEY': ALPACA_SECRET,
+    };
+
+    const [accountRes, positionsRes] = await Promise.all([
+      fetch('https://api.alpaca.markets/v2/account', { headers }),
+      fetch('https://api.alpaca.markets/v2/positions', { headers }),
+    ]);
+    const account   = await accountRes.json();
+    const positions = await positionsRes.json();
+
+    // Pull trade decisions from Postgres
+    let tradeDecisions = [];
+    try {
+      const td = await pool.query(
+        'SELECT raw FROM trade_decisions ORDER BY logged_at ASC LIMIT 500'
+      );
+      tradeDecisions = td.rows.map(r => r.raw);
+    } catch (_) {}
+
+    // Summarise P&L from closed trades
+    const closed = tradeDecisions.filter(t => t.action === 'sell');
+    const totalRealizedPnl = closed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
+    const totalTrades = tradeDecisions.length;
+    const wins  = closed.filter(t => (t.pnl_pct || 0) > 0).length;
+    const losses = closed.filter(t => (t.pnl_pct || 0) <= 0).length;
+
+    res.json({
+      account: {
+        equity:        parseFloat(account.equity        || 0),
+        cash:          parseFloat(account.cash          || 0),
+        buyingPower:   parseFloat(account.buying_power  || 0),
+        longMarketValue: parseFloat(account.long_market_value || 0),
+      },
+      positions: Array.isArray(positions) ? positions.map(p => ({
+        symbol:       p.symbol,
+        qty:          parseFloat(p.qty),
+        entryPrice:   parseFloat(p.avg_entry_price),
+        currentPrice: parseFloat(p.current_price),
+        marketValue:  parseFloat(p.market_value),
+        unrealizedPl: parseFloat(p.unrealized_pl),
+        unrealizedPlPct: parseFloat(p.unrealized_plpc) * 100,
+        side:         p.side,
+      })) : [],
+      pnl: {
+        realized:    totalRealizedPnl,
+        totalTrades,
+        wins,
+        losses,
+        winRate: closed.length ? Math.round((wins / closed.length) * 100) : null,
+      },
+      recentTrades: tradeDecisions.slice(-20).reverse(),
+    });
+  } catch (e) {
+    console.error('Portfolio API error:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── SPA ─────────────────────────────────────────────────────────────────────
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
