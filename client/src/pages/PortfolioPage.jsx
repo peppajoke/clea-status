@@ -48,7 +48,9 @@ export default function PortfolioPage() {
 
   const unrealizedTotal = positions.reduce((s, p) => s + p.unrealizedPl, 0)
   const totalPnl = unrealizedTotal + (pnl.realized || 0)
-  const startingValue = 500.15 // known starting equity
+  const deposited = account.totalDeposited || 0
+  const pnlDelta = deposited > 0 ? account.equity - deposited : null
+  const pnlPct   = deposited > 0 ? ((account.equity - deposited) / deposited) * 100 : null
 
   return (
     <div className="port-page">
@@ -56,11 +58,15 @@ export default function PortfolioPage() {
       {/* ── Hero stats ── */}
       <div className="port-hero">
         <div className="port-hero-main">
-          <span className="port-hero-label">Total Equity</span>
+          <span className="port-hero-label">Total Balance</span>
           <span className="port-hero-value">${fmt(account.equity)}</span>
-          <span className={`port-hero-delta ${pctColor(account.equity - startingValue)}`}>
-            {sign(account.equity - startingValue)}${fmt(account.equity - startingValue)} since start
-          </span>
+          {pnlDelta !== null ? (
+            <span className={`port-hero-delta ${pctColor(pnlDelta)}`}>
+              {sign(pnlDelta)}${fmt(pnlDelta)} ({sign(pnlPct)}{fmt(pnlPct)}%)
+            </span>
+          ) : (
+            <span className="port-hero-delta neutral">P&L unavailable</span>
+          )}
         </div>
 
         <div className="port-stats-row">

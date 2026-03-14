@@ -1601,11 +1601,17 @@ app.get('/api/portfolio', requireAccess, async (req, res) => {
     };
     const alp = (path) => fetch(`https://api.alpaca.markets${path}`, { headers: h }).then(r => r.json());
 
-    const [account, positions, orders] = await Promise.all([
+    const [account, positions, orders, activities] = await Promise.all([
       alp('/v2/account'),
       alp('/v2/positions'),
       alp('/v2/orders?status=closed&limit=50&direction=desc'),
+      alp('/v2/account/activities?activity_type=CSD&page_size=100'),
     ]);
+
+    // Sum all cash deposits to get total seeded capital
+    const totalDeposited = Array.isArray(activities)
+      ? activities.reduce((s, a) => s + parseFloat(a.net_amount || 0), 0)
+      : 0;
 
     // Compute realized P&L from filled sell orders
     const sells = Array.isArray(orders)
@@ -1654,6 +1660,7 @@ app.get('/api/portfolio', requireAccess, async (req, res) => {
         cash:            parseFloat(account.cash             || 0),
         buyingPower:     parseFloat(account.buying_power     || 0),
         longMarketValue: parseFloat(account.long_market_value|| 0),
+        totalDeposited,
       },
       positions: Array.isArray(positions) ? positions.map(p => ({
         symbol:          p.symbol,
