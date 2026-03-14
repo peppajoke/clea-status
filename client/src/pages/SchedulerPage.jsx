@@ -72,6 +72,7 @@ export default function SchedulerPage() {
   const [actionType, setActionType] = useState('prompt')
   const [actionConfig, setActionConfig] = useState({})
   const [loading, setLoading] = useState(true)
+  const [runningId, setRunningId] = useState(null)
   const [editingId, setEditingId] = useState(null)
   const [editPrompt, setEditPrompt] = useState('')
   const [editFreq, setEditFreq] = useState('daily')
@@ -127,6 +128,20 @@ export default function SchedulerPage() {
     if (!confirm('Delete this schedule?')) return
     await fetch(`/api/prompt-schedules/${id}`, { method: 'DELETE', headers })
     load()
+  }
+
+  const handleRunNow = async (id) => {
+    setRunningId(id)
+    try {
+      const res = await fetch(`/api/prompt-schedules/${id}/run`, { method: 'POST', headers })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'failed')
+      // brief flash — keep runningId for 1.5s so user sees feedback
+    } catch (e) {
+      alert(`Run failed: ${e.message}`)
+    } finally {
+      setTimeout(() => setRunningId(r => r === id ? null : r), 1500)
+    }
   }
 
   const startEditing = (s) => {
@@ -345,6 +360,14 @@ export default function SchedulerPage() {
                 <div className="schedule-actions" onClick={e => e.stopPropagation()}>
                   <button className="brain-btn brain-active btn-sm" onClick={() => handleBrainToggle(s.id, s.brain || 'big')} title={`Switch to ${(s.brain || 'big') === 'big' ? 'little' : 'big'} brain`}>
                     {(s.brain || 'big') === 'big' ? '🧠' : '🐣'}
+                  </button>
+                  <button
+                    className={`btn btn-sm ${runningId === s.id ? 'btn-success' : 'btn-run-now'}`}
+                    onClick={() => handleRunNow(s.id)}
+                    disabled={runningId === s.id}
+                    title="Queue this task immediately"
+                  >
+                    {runningId === s.id ? '✓' : '⚡ Now'}
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={() => handleToggle(s.id, s.status)}>
                     {s.status === 'active' ? 'Pause' : 'Resume'}

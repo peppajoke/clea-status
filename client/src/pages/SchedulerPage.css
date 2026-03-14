@@ -168,6 +168,31 @@
   border-color: #7a2020;
 }
 
+/* Run Now button */
+.btn-run-now {
+  background: transparent;
+  border: 1px solid var(--cyan-dim, #3a6a6a);
+  color: var(--cyan-dim, #7dd3d3);
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-run-now:hover {
+  background: var(--cyan-dim, #3a6a6a);
+  color: var(--text, #fff);
+}
+.btn-success {
+  background: #1a4a2d;
+  border: 1px solid #2d7a4a;
+  color: #8bc48b;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  cursor: default;
+}
+
 /* Edit mode */
 .schedule-editing {
   border-color: var(--cyan-dim);

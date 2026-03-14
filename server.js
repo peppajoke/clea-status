@@ -983,6 +983,44 @@ app.delete('/api/prompt-schedules/:id', requireAccess, async (req, res) => {
   }
 });
 
+// ── Run Schedule Now (manual trigger) ────────────────────────────────────────
+app.post('/api/prompt-schedules/:id/run', requireAccess, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM prompt_schedules WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'not found' });
+    const schedule = rows[0];
+    const actionType = schedule.action_type || 'prompt';
+    const actionConfig = schedule.action_config || {};
+
+    if (actionType === 'script') {
+      const { execSync } = await import('child_process');
+      const scriptPath = actionConfig.script_path || schedule.prompt_text;
+      const output = execSync(scriptPath, { timeout: 30000, encoding: 'utf8', maxBuffer: 1024 * 1024 });
+      res.json({ ok: true, type: 'script', output: output.slice(0, 500) });
+    } else if (actionType === 'curl') {
+      const url = actionConfig.url || schedule.prompt_text;
+      const method = (actionConfig.method || 'GET').toUpperCase();
+      const curlHeaders = actionConfig.headers || {};
+      const curlBody = actionConfig.body || null;
+      const fetchOpts = { method, headers: curlHeaders };
+      if (curlBody && method !== 'GET') fetchOpts.body = typeof curlBody === 'string' ? curlBody : JSON.stringify(curlBody);
+      const curlRes = await fetch(url, fetchOpts).catch(e => { throw new Error(`curl failed: ${e.message}`); });
+      res.json({ ok: true, type: 'curl', status: curlRes.status });
+    } else {
+      // prompt type — create a task immediately
+      const sid = `t${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const { rows: taskRows } = await pool.query(
+        `INSERT INTO tasks (id, text, col, complexity, brain, priority, updated_at) VALUES ($1, $2, 'todo', 'medium', $3, $4, NOW()) RETURNING *`,
+        [sid, `[Scheduled] ${schedule.prompt_text}`, schedule.brain || 'big', !!schedule.priority]
+      );
+      res.json({ ok: true, type: 'prompt', task: taskRows[0] });
+    }
+  } catch (err) {
+    console.error('[runScheduleNow]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Prompt Executor (triggered by scheduler) ────────────────────────────────
 app.post('/api/prompt-execute', requireAccess, async (req, res) => {
   const { schedule_id, prompt_text } = req.body || {};
