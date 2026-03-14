@@ -58,14 +58,21 @@ export default function PortfolioPage() {
       {/* ── Hero stats ── */}
       <div className="port-hero">
         <div className="port-hero-main">
-          <span className="port-hero-label">Total Balance</span>
-          <span className="port-hero-value">${fmt(account.equity)}</span>
+          <span className="port-hero-label">Net Return</span>
           {pnlDelta !== null ? (
-            <span className={`port-hero-delta ${pctColor(pnlDelta)}`}>
-              {sign(pnlDelta)}${fmt(pnlDelta)} ({sign(pnlPct)}{fmt(pnlPct)}%)
-            </span>
+            <>
+              <span className={`port-hero-value ${pctColor(pnlDelta)}`}>
+                {sign(pnlDelta)}${fmt(pnlDelta)}
+              </span>
+              <span className={`port-hero-delta ${pctColor(pnlPct)}`}>
+                {sign(pnlPct)}{fmt(pnlPct)}% · Balance ${fmt(account.equity)}
+              </span>
+            </>
           ) : (
-            <span className="port-hero-delta neutral">P&L unavailable</span>
+            <>
+              <span className="port-hero-value">${fmt(account.equity)}</span>
+              <span className="port-hero-delta neutral">P&L unavailable</span>
+            </>
           )}
         </div>
 
