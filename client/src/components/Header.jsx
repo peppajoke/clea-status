@@ -1,4 +1,4 @@
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { fetchWorkStatus } from '../api'
 import './Header.css'
@@ -26,6 +26,8 @@ const STATUS_MAP = {
 
 export default function Header({ authenticated }) {
   const [status, setStatus] = useState(null)
+  const location = useLocation()
+  const isHome = authenticated && location.pathname === '/'
 
   useEffect(() => {
     const load = () => fetchWorkStatus().then(setStatus).catch(() => {})
@@ -35,7 +37,8 @@ export default function Header({ authenticated }) {
   }, [])
 
   const s = status ? (STATUS_MAP[status.status] || STATUS_MAP.nothing_to_do) : null
-  const navItems = authenticated ? [...PUBLIC_NAV, ...ADMIN_NAV] : PUBLIC_NAV
+  // On the home screen (authenticated), nav is redundant — icons replace it
+  const navItems = isHome ? [] : (authenticated ? [...PUBLIC_NAV, ...ADMIN_NAV] : PUBLIC_NAV)
 
   return (
     <header className="header">
