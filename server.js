@@ -1587,66 +1587,89 @@ app.delete('/api/shirt-ideas/:id', requireAccess, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Trading Portfolio API ───────────────────────────────────────────────────
+// ── Trading Portfolio API — queries Alpaca directly, no local state ──────────
 app.get('/api/portfolio', requireAccess, async (req, res) => {
   try {
     const ALPACA_KEY    = process.env.ALPACA_API_KEY;
     const ALPACA_SECRET = process.env.ALPACA_API_SECRET;
     if (!ALPACA_KEY || !ALPACA_SECRET) return res.status(503).json({ error: 'Alpaca keys not configured' });
 
-    const headers = {
+    const h = {
       'APCA-API-KEY-ID':     ALPACA_KEY,
       'APCA-API-SECRET-KEY': ALPACA_SECRET,
     };
+    const alp = (path) => fetch(`https://api.alpaca.markets${path}`, { headers: h }).then(r => r.json());
 
-    const [accountRes, positionsRes] = await Promise.all([
-      fetch('https://api.alpaca.markets/v2/account', { headers }),
-      fetch('https://api.alpaca.markets/v2/positions', { headers }),
+    const [account, positions, orders] = await Promise.all([
+      alp('/v2/account'),
+      alp('/v2/positions'),
+      alp('/v2/orders?status=closed&limit=50&direction=desc'),
     ]);
-    const account   = await accountRes.json();
-    const positions = await positionsRes.json();
 
-    // Pull trade decisions from Postgres
-    let tradeDecisions = [];
-    try {
-      const td = await pool.query(
-        'SELECT raw FROM trade_decisions ORDER BY logged_at ASC LIMIT 500'
-      );
-      tradeDecisions = td.rows.map(r => r.raw);
-    } catch (_) {}
+    // Compute realized P&L from filled sell orders
+    const sells = Array.isArray(orders)
+      ? orders.filter(o => o.side === 'sell' && o.status === 'filled')
+      : [];
 
-    // Summarise P&L from closed trades
-    const closed = tradeDecisions.filter(t => t.action === 'sell');
-    const totalRealizedPnl = closed.reduce((sum, t) => sum + (t.pnl_usd || 0), 0);
-    const totalTrades = tradeDecisions.length;
-    const wins  = closed.filter(t => (t.pnl_pct || 0) > 0).length;
-    const losses = closed.filter(t => (t.pnl_pct || 0) <= 0).length;
+    let realizedPnl = 0;
+    let wins = 0, losses = 0;
+    const recentTrades = sells.slice(0, 20).map(o => {
+      const filled   = parseFloat(o.filled_avg_price || 0);
+      const qty      = parseFloat(o.filled_qty || 0);
+      const notional = filled * qty;
+      return {
+        action:     o.side,
+        symbol:     o.symbol,
+        qty,
+        price:      filled,
+        notional,
+        filledAt:   o.filled_at,
+        orderId:    o.id,
+      };
+    });
+
+    // Also include buys in recent trades
+    const buys = Array.isArray(orders)
+      ? orders.filter(o => o.side === 'buy' && o.status === 'filled').slice(0, 20)
+      : [];
+    const allRecentOrders = [...orders.filter(o => o.status === 'filled')]
+      .slice(0, 20)
+      .map(o => ({
+        action:   o.side,
+        symbol:   o.symbol,
+        qty:      parseFloat(o.filled_qty || 0),
+        price:    parseFloat(o.filled_avg_price || 0),
+        notional: parseFloat(o.filled_avg_price || 0) * parseFloat(o.filled_qty || 0),
+        filledAt: o.filled_at,
+      }));
+
+    const unrealizedTotal = Array.isArray(positions)
+      ? positions.reduce((s, p) => s + parseFloat(p.unrealized_pl || 0), 0)
+      : 0;
 
     res.json({
       account: {
-        equity:        parseFloat(account.equity        || 0),
-        cash:          parseFloat(account.cash          || 0),
-        buyingPower:   parseFloat(account.buying_power  || 0),
-        longMarketValue: parseFloat(account.long_market_value || 0),
+        equity:          parseFloat(account.equity           || 0),
+        cash:            parseFloat(account.cash             || 0),
+        buyingPower:     parseFloat(account.buying_power     || 0),
+        longMarketValue: parseFloat(account.long_market_value|| 0),
       },
       positions: Array.isArray(positions) ? positions.map(p => ({
-        symbol:       p.symbol,
-        qty:          parseFloat(p.qty),
-        entryPrice:   parseFloat(p.avg_entry_price),
-        currentPrice: parseFloat(p.current_price),
-        marketValue:  parseFloat(p.market_value),
-        unrealizedPl: parseFloat(p.unrealized_pl),
+        symbol:          p.symbol,
+        qty:             parseFloat(p.qty),
+        entryPrice:      parseFloat(p.avg_entry_price),
+        currentPrice:    parseFloat(p.current_price),
+        marketValue:     parseFloat(p.market_value),
+        unrealizedPl:    parseFloat(p.unrealized_pl),
         unrealizedPlPct: parseFloat(p.unrealized_plpc) * 100,
-        side:         p.side,
+        side:            p.side,
       })) : [],
       pnl: {
-        realized:    totalRealizedPnl,
-        totalTrades,
-        wins,
-        losses,
-        winRate: closed.length ? Math.round((wins / closed.length) * 100) : null,
+        unrealized:   unrealizedTotal,
+        realized:     realizedPnl,
+        totalFilled:  Array.isArray(orders) ? orders.filter(o => o.status === 'filled').length : 0,
       },
-      recentTrades: tradeDecisions.slice(-20).reverse(),
+      recentTrades: allRecentOrders,
     });
   } catch (e) {
     console.error('Portfolio API error:', e);

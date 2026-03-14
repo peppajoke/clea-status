@@ -47,7 +47,7 @@ export default function PortfolioPage() {
   const { account, positions, pnl } = data
 
   const unrealizedTotal = positions.reduce((s, p) => s + p.unrealizedPl, 0)
-  const totalPnl = unrealizedTotal + pnl.realized
+  const totalPnl = unrealizedTotal + (pnl.realized || 0)
   const startingValue = 500.15 // known starting equity
 
   return (
@@ -91,13 +91,8 @@ export default function PortfolioPage() {
             </span>
           </div>
           <div className="port-stat">
-            <span className="port-stat-label">Win Rate</span>
-            <span className="port-stat-value">
-              {pnl.winRate !== null ? `${pnl.winRate}%` : '—'}
-              {pnl.wins + pnl.losses > 0 && (
-                <span className="port-stat-sub"> ({pnl.wins}W / {pnl.losses}L)</span>
-              )}
-            </span>
+            <span className="port-stat-label">Orders Filled</span>
+            <span className="port-stat-value">{pnl.totalFilled ?? '—'}</span>
           </div>
         </div>
       </div>
@@ -146,7 +141,7 @@ export default function PortfolioPage() {
       <div className="port-section">
         <h2 className="port-section-title">Recent Trades</h2>
         {data.recentTrades.length === 0 ? (
-          <div className="port-empty">No trades yet</div>
+          <div className="port-empty">No filled orders yet</div>
         ) : (
           <div className="port-trades">
             {data.recentTrades.map((t, i) => (
@@ -155,21 +150,11 @@ export default function PortfolioPage() {
                   {t.action.toUpperCase()}
                 </span>
                 <span className="port-trade-symbol">{t.symbol}</span>
-                <span className="port-trade-mode">[{t.mode}]</span>
-                {t.action === 'buy' ? (
-                  <>
-                    <span className="port-trade-detail">${fmt(t.notional)} @ score {fmt(t.signals?.composite, 3)}</span>
-                  </>
-                ) : (
-                  <>
-                    <span className={`port-trade-detail ${pctColor(t.pnl_pct)}`}>
-                      {sign(t.pnl_pct)}{fmt(t.pnl_pct)}% (${sign(t.pnl_usd)}{fmt(t.pnl_usd)})
-                    </span>
-                    <span className="port-trade-reason">{t.exit_reason}</span>
-                  </>
-                )}
+                <span className="port-trade-detail">
+                  {t.qty} @ ${fmt(t.price)} = ${fmt(t.notional)}
+                </span>
                 <span className="port-trade-time">
-                  {t.logged_at ? new Date(t.logged_at).toLocaleDateString() : ''}
+                  {t.filledAt ? new Date(t.filledAt).toLocaleString() : ''}
                 </span>
               </div>
             ))}
