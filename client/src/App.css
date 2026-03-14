@@ -3,3 +3,17 @@
   flex-direction: column;
   min-height: 100dvh;
 }
+
+/* Sticky header + mobile dock wrapper */
+.app-top {
+  flex-shrink: 0;
+}
+
+@media (max-width: 599px) {
+  .app-top {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--bg);
+  }
+}

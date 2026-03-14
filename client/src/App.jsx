@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useEffect, createContext } from 'react'
 import Header from './components/Header'
+import MobileIconDock from './components/MobileIconDock'
 import TasksPage from './pages/TasksPage'
 import SchedulerPage from './pages/SchedulerPage'
 import SettingsPage from './pages/SettingsPage'
@@ -35,7 +36,10 @@ export default function App() {
   return (
     <AuthContext.Provider value={{ authenticated, setAuthenticated }}>
       <div className="app">
-        <Header authenticated={authenticated} />
+        <div className="app-top">
+          <Header authenticated={authenticated} />
+          {authReady && authenticated && <MobileIconDock />}
+        </div>
         <Routes>
           <Route path="/" element={
             !authReady ? null :
@@ -54,4 +58,5 @@ export default function App() {
       </div>
     </AuthContext.Provider>
   )
+
 }

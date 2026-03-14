@@ -90,6 +90,17 @@
   background: rgba(0,200,255,0.08);
 }
 
+/* Mobile: hide nav tabs — MobileIconDock handles navigation */
+@media (max-width: 599px) {
+  .header-nav-wrap {
+    display: none;
+  }
+  /* Remove bottom border — MobileIconDock provides its own separator */
+  .header {
+    border-bottom: none;
+  }
+}
+
 /* Desktop: single-row layout */
 @media (min-width: 600px) {
   .header {

@@ -122,3 +122,14 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* On mobile, the MobileIconDock handles navigation — hide the redundant grid */
+@media (max-width: 599px) {
+  .home-grid {
+    display: none;
+  }
+  .home-page {
+    padding-top: 2rem;
+    gap: 1rem;
+  }
+}
