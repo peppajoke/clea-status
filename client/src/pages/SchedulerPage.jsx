@@ -68,6 +68,7 @@ export default function SchedulerPage() {
   const [dow, setDow] = useState(1)
   const [desc, setDesc] = useState('')
   const [brain, setBrain] = useState('big')
+  const [priority, setPriority] = useState(false)
   const [actionType, setActionType] = useState('prompt')
   const [actionConfig, setActionConfig] = useState({})
   const [loading, setLoading] = useState(true)
@@ -78,6 +79,7 @@ export default function SchedulerPage() {
   const [editDow, setEditDow] = useState(1)
   const [editDesc, setEditDesc] = useState('')
   const [editBrain, setEditBrain] = useState('big')
+  const [editPriority, setEditPriority] = useState(false)
   const [editActionType, setEditActionType] = useState('prompt')
   const [editActionConfig, setEditActionConfig] = useState({})
 
@@ -95,7 +97,7 @@ export default function SchedulerPage() {
     if (!prompt.trim()) return
     await fetch('/api/prompt-schedules', {
       method: 'POST', headers,
-      body: JSON.stringify({ prompt_text: prompt.trim(), schedule_expr: buildCron(freq, hour, dow), schedule_tz: 'America/New_York', description: desc.trim() || null, brain, action_type: actionType, action_config: actionType === 'curl' ? { ...actionConfig, url: prompt.trim() } : actionType === 'script' ? { script_path: prompt.trim() } : {} })
+      body: JSON.stringify({ prompt_text: prompt.trim(), schedule_expr: buildCron(freq, hour, dow), schedule_tz: 'America/New_York', description: desc.trim() || null, brain, priority, action_type: actionType, action_config: actionType === 'curl' ? { ...actionConfig, url: prompt.trim() } : actionType === 'script' ? { script_path: prompt.trim() } : {} })
     })
     setPrompt('')
     setDesc('')
@@ -103,6 +105,7 @@ export default function SchedulerPage() {
     setHour(9)
     setDow(1)
     setBrain('big')
+    setPriority(false)
     setActionType('prompt')
     setActionConfig({})
     load()
@@ -135,6 +138,7 @@ export default function SchedulerPage() {
     setEditDow(parsed.dow)
     setEditDesc(s.description || '')
     setEditBrain(s.brain || 'big')
+    setEditPriority(!!s.priority)
     setEditActionType(s.action_type || 'prompt')
     setEditActionConfig(s.action_config || {})
   }
@@ -151,6 +155,7 @@ export default function SchedulerPage() {
         schedule_expr: buildCron(editFreq, editHour, editDow),
         description: editDesc.trim() || null,
         brain: editBrain,
+        priority: editPriority,
         action_type: editActionType,
         action_config: editActionType === 'curl' ? { ...editActionConfig, url: editPrompt.trim() } : editActionType === 'script' ? { script_path: editPrompt.trim() } : {}
       })
@@ -246,6 +251,7 @@ export default function SchedulerPage() {
               <button type="button" className={`brain-btn ${brain === 'little' ? 'brain-active' : ''}`} onClick={() => setBrain('little')} title="Little brain (Haiku)">🐣</button>
             </div>
           )}
+          <button type="button" className={`brain-btn ${priority ? 'priority-active' : ''}`} onClick={() => setPriority(p => !p)} title="High priority — tasks jump the queue">🔴</button>
           <input
             className="scheduler-desc"
             value={desc}
@@ -312,6 +318,7 @@ export default function SchedulerPage() {
                         <button type="button" className={`brain-btn ${editBrain === 'little' ? 'brain-active' : ''}`} onClick={() => setEditBrain('little')} title="Little brain (Haiku)">🐣</button>
                       </div>
                     )}
+                    <button type="button" className={`brain-btn ${editPriority ? 'priority-active' : ''}`} onClick={() => setEditPriority(p => !p)} title="High priority — tasks jump the queue">🔴</button>
                     <input className="scheduler-desc" value={editDesc} onChange={e => setEditDesc(e.target.value)} placeholder="Description (optional)" />
                   </div>
                   <div className="scheduler-row" style={{ marginTop: 8 }}>
@@ -326,6 +333,7 @@ export default function SchedulerPage() {
                   <div className="schedule-prompt">{s.prompt_text}</div>
                   <div className="schedule-meta">
                     <span className={`badge ${s.status === 'active' ? 'badge-active' : 'badge-todo'}`}>{s.status}</span>
+                    {s.priority && <span className="badge badge-priority">🔴 priority</span>}
                     {s.action_type && s.action_type !== 'prompt' && (
                       <span className={`badge badge-action-${s.action_type}`}>{s.action_type === 'script' ? '📜 script' : '🌐 curl'}</span>
                     )}

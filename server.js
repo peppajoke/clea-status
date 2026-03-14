@@ -281,8 +281,8 @@ async function evaluateAndExecutePrompts() {
               if (!response || !response.ok) {
                 const sid = `t${Date.now()}_${Math.floor(Math.random() * 10000)}`;
                 await pool.query(
-                  `INSERT INTO tasks (id, text, col, complexity, updated_at) VALUES ($1, $2, 'todo', 'medium', NOW())`,
-                  [sid, `[Scheduled] ${schedule.prompt_text}`]
+                  `INSERT INTO tasks (id, text, col, complexity, priority, updated_at) VALUES ($1, $2, 'todo', 'medium', $3, NOW())`,
+                  [sid, `[Scheduled] ${schedule.prompt_text}`, !!schedule.priority]
                 );
               }
             }
@@ -919,7 +919,7 @@ app.get('/api/work-status', async (req, res) => {
 // ── Prompt Schedules ────────────────────────────────────────────────────────
 app.get('/api/prompt-schedules', requireAccess, async (req, res) => {
   try {
-    const { rows } = await pool.query(`SELECT id, prompt_text, schedule_expr, schedule_tz, description, status, brain, action_type, action_config, last_run, next_run, created_at, updated_at FROM prompt_schedules ORDER BY created_at ASC`);
+    const { rows } = await pool.query(`SELECT id, prompt_text, schedule_expr, schedule_tz, description, status, brain, action_type, action_config, priority, last_run, next_run, created_at, updated_at FROM prompt_schedules ORDER BY created_at ASC`);
     res.json({ schedules: rows });
   } catch (err) {
     console.error('[getPromptSchedules]', err.message);
@@ -928,15 +928,15 @@ app.get('/api/prompt-schedules', requireAccess, async (req, res) => {
 });
 
 app.post('/api/prompt-schedules', requireAccess, async (req, res) => {
-  const { prompt_text, schedule_expr, schedule_tz, description, brain, action_type, action_config } = req.body || {};
+  const { prompt_text, schedule_expr, schedule_tz, description, brain, action_type, action_config, priority } = req.body || {};
   if (!prompt_text || !schedule_expr) return res.status(400).json({ error: 'prompt_text and schedule_expr are required' });
   
   try {
     const id = `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const { rows } = await pool.query(
-      `INSERT INTO prompt_schedules (id, prompt_text, schedule_expr, schedule_tz, description, status, brain, action_type, action_config)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [id, prompt_text, schedule_expr, schedule_tz || 'UTC', description || null, 'active', brain || 'big', action_type || 'prompt', JSON.stringify(action_config || {})]
+      `INSERT INTO prompt_schedules (id, prompt_text, schedule_expr, schedule_tz, description, status, brain, action_type, action_config, priority)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
+      [id, prompt_text, schedule_expr, schedule_tz || 'UTC', description || null, 'active', brain || 'big', action_type || 'prompt', JSON.stringify(action_config || {}), !!priority]
     );
     res.json(rows[0]);
   } catch (err) {
@@ -946,7 +946,7 @@ app.post('/api/prompt-schedules', requireAccess, async (req, res) => {
 });
 
 app.patch('/api/prompt-schedules/:id', requireAccess, async (req, res) => {
-  const { prompt_text, schedule_expr, schedule_tz, description, status, last_run, next_run, brain, action_type, action_config } = req.body || {};
+  const { prompt_text, schedule_expr, schedule_tz, description, status, last_run, next_run, brain, action_type, action_config, priority } = req.body || {};
   
   const fields = [], vals = [];
   if (prompt_text !== undefined) { fields.push(`prompt_text=$${fields.length+1}`); vals.push(prompt_text); }
@@ -959,6 +959,7 @@ app.patch('/api/prompt-schedules/:id', requireAccess, async (req, res) => {
   if (brain !== undefined) { fields.push(`brain=$${fields.length+1}`); vals.push(brain); }
   if (action_type !== undefined) { fields.push(`action_type=$${fields.length+1}`); vals.push(action_type); }
   if (action_config !== undefined) { fields.push(`action_config=$${fields.length+1}`); vals.push(JSON.stringify(action_config)); }
+  if (priority !== undefined) { fields.push(`priority=$${fields.length+1}`); vals.push(!!priority); }
   if (!fields.length) return res.status(400).json({ error: 'nothing to update' });
   fields.push(`updated_at=NOW()`);
   vals.push(req.params.id);
