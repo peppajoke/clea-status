@@ -5,7 +5,7 @@ const APPS = [
   {
     path: '/tasks',
     label: 'Tasks',
-    icon: '✅',
+    icon: '💬',
     desc: 'Queue & task board',
     color: '#22d3ee',
   },
