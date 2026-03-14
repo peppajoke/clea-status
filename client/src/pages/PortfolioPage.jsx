@@ -108,28 +108,46 @@ export default function PortfolioPage() {
               .sort((a, b) => b.marketValue - a.marketValue)
               .map(p => (
                 <div key={p.symbol} className="port-position">
-                  <div className="port-pos-left">
-                    <span className="port-pos-symbol">{p.symbol}</span>
-                    <span className="port-pos-qty">{p.qty} shares</span>
+                  <div className="port-pos-row">
+                    <div className="port-pos-left">
+                      <span className="port-pos-symbol">{p.symbol}</span>
+                      <span className="port-pos-qty">{p.qty} shares</span>
+                    </div>
+                    <div className="port-pos-mid">
+                      <span className="port-pos-price">
+                        <span className="port-pos-price-label">entry </span>
+                        ${fmt(p.entryPrice)}
+                      </span>
+                      <span className="port-pos-arrow">→</span>
+                      <span className="port-pos-price">
+                        <span className="port-pos-price-label">now </span>
+                        ${fmt(p.currentPrice)}
+                      </span>
+                    </div>
+                    <div className="port-pos-right">
+                      <span className={`port-pos-pnl ${pctColor(p.unrealizedPl)}`}>
+                        {sign(p.unrealizedPl)}${fmt(p.unrealizedPl)}
+                      </span>
+                      <span className={`port-pos-pct ${pctColor(p.unrealizedPlPct)}`}>
+                        {sign(p.unrealizedPlPct)}{fmt(p.unrealizedPlPct)}%
+                      </span>
+                    </div>
                   </div>
-                  <div className="port-pos-mid">
-                    <span className="port-pos-price">
-                      <span className="port-pos-price-label">entry </span>
-                      ${fmt(p.entryPrice)}
-                    </span>
-                    <span className="port-pos-arrow">→</span>
-                    <span className="port-pos-price">
-                      <span className="port-pos-price-label">now </span>
-                      ${fmt(p.currentPrice)}
-                    </span>
-                  </div>
-                  <div className="port-pos-right">
-                    <span className={`port-pos-pnl ${pctColor(p.unrealizedPl)}`}>
-                      {sign(p.unrealizedPl)}${fmt(p.unrealizedPl)}
-                    </span>
-                    <span className={`port-pos-pct ${pctColor(p.unrealizedPlPct)}`}>
-                      {sign(p.unrealizedPlPct)}{fmt(p.unrealizedPlPct)}%
-                    </span>
+                  <div className="port-pos-details">
+                    <div className="port-pos-detail-item">
+                      <span className="port-pos-detail-label">Cost Basis</span>
+                      <span className="port-pos-detail-value">${fmt(p.qty * p.entryPrice)}</span>
+                    </div>
+                    <div className="port-pos-detail-item">
+                      <span className="port-pos-detail-label">Current Value</span>
+                      <span className="port-pos-detail-value">${fmt(p.marketValue)}</span>
+                    </div>
+                    <div className="port-pos-detail-item">
+                      <span className="port-pos-detail-label">Delta</span>
+                      <span className={`port-pos-detail-value ${pctColor(p.unrealizedPl)}`}>
+                        {sign(p.unrealizedPl)}${fmt(p.unrealizedPl)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
