@@ -47,10 +47,7 @@ export default function PortfolioPage() {
   const { account, positions, pnl } = data
 
   const unrealizedTotal = positions.reduce((s, p) => s + p.unrealizedPl, 0)
-  const totalPnl = unrealizedTotal + (pnl.realized || 0)
-  const deposited = account.totalDeposited || 0
-  const pnlDelta = deposited > 0 ? account.equity - deposited : null
-  const pnlPct   = deposited > 0 ? ((account.equity - deposited) / deposited) * 100 : null
+  const unrealizedPct = positions.reduce((s, p) => s + (p.unrealizedPlPc || 0), 0) / Math.max(positions.length, 1)
 
   return (
     <div className="port-page">
@@ -58,21 +55,14 @@ export default function PortfolioPage() {
       {/* ── Hero stats ── */}
       <div className="port-hero">
         <div className="port-hero-main">
-          <span className="port-hero-label">Net Return</span>
-          {pnlDelta !== null ? (
-            <>
-              <span className={`port-hero-value ${pctColor(pnlDelta)}`}>
-                {sign(pnlDelta)}${fmt(pnlDelta)}
-              </span>
-              <span className={`port-hero-delta ${pctColor(pnlPct)}`}>
-                {sign(pnlPct)}{fmt(pnlPct)}% · Balance ${fmt(account.equity)}
-              </span>
-            </>
+          <span className="port-hero-label">Portfolio Value</span>
+          <span className="port-hero-value">${fmt(account.equity)}</span>
+          {positions.length > 0 ? (
+            <span className={`port-hero-delta ${pctColor(unrealizedTotal)}`}>
+              {sign(unrealizedTotal)}${fmt(Math.abs(unrealizedTotal))} unrealized · {positions.length} position{positions.length !== 1 ? 's' : ''}
+            </span>
           ) : (
-            <>
-              <span className="port-hero-value">${fmt(account.equity)}</span>
-              <span className="port-hero-delta neutral">P&L unavailable</span>
-            </>
+            <span className="port-hero-delta neutral">No open positions</span>
           )}
         </div>
 
