@@ -1761,6 +1761,139 @@ app.get('/api/portfolio', requireAccess, async (req, res) => {
   }
 });
 
+// ── Ruin Sprite API ─────────────────────────────────────────────────────────
+// Generates dark-fantasy game sprites via DALL-E 3, resized to requested dimensions.
+// Auth: x-ruin-token header
+const RUIN_API_TOKEN = 'ruin_sk_LZ5ub8tGSfDSQSuhuUVARIFkgCN0GNp42fFXjaTs';
+const RUIN_VALID_SIZES = [16, 32, 64, 128, 256, 512];
+
+function buildRuinSpritePrompt(userPrompt) {
+  return `Game sprite for a dark fantasy ruins game: "${userPrompt}".
+
+Art direction:
+- Style: hand-painted 2D game sprite, dark gothic fantasy aesthetic
+- Color palette: deep charcoal blacks, bone white, dried-blood crimson, rust orange, sickly moss green, tarnished silver — desaturated and grim
+- Lighting: harsh rim light from below or side, deep shadows, no bright cheerful colors
+- Subject is centered with clear silhouette on a flat solid BLACK background (#000000) — this black will be used as a transparency mask
+- No text, no UI elements, no borders, no decorative frames
+- Designed to look like a sprite sheet asset: crisp edges, readable at small scale
+- Inspired by: Dark Souls, Hollow Knight, Blasphemous — oppressive and decrepit atmosphere
+- The subject should fill roughly 70-80% of the image area
+- Flat black background only — critical for alpha masking
+
+Output must be a single centered subject on pure black. No gradients in background.`;
+}
+
+async function callDalleForSprite(prompt) {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey) throw new Error('OPENAI_API_KEY not configured');
+
+  const body = JSON.stringify({
+    model: 'dall-e-3',
+    prompt: buildRuinSpritePrompt(prompt),
+    n: 1,
+    size: '1024x1024',
+    quality: 'standard',
+    response_format: 'url',
+  });
+
+  const imageUrl = await new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'api.openai.com',
+      path: '/v1/images/generations',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`,
+        'Content-Length': Buffer.byteLength(body),
+      },
+    };
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          if (json.error) reject(new Error(`DALL-E: ${json.error.message}`));
+          else resolve(json.data?.[0]?.url);
+        } catch (e) { reject(new Error('Failed to parse DALL-E response')); }
+      });
+    });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+
+  if (!imageUrl) throw new Error('DALL-E returned no image URL');
+  return imageUrl;
+}
+
+async function downloadBuffer(url) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        downloadBuffer(res.headers.location).then(resolve).catch(reject);
+        return;
+      }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+      res.on('error', reject);
+    }).on('error', reject);
+  });
+}
+
+app.post('/api/ruin/sprite', async (req, res) => {
+  // Auth
+  const token = req.headers['x-ruin-token'];
+  if (token !== RUIN_API_TOKEN) return res.status(401).json({ error: 'Invalid or missing x-ruin-token' });
+
+  const { prompt, size } = req.body;
+  if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+    return res.status(400).json({ error: 'prompt is required' });
+  }
+
+  // Parse size: accept "64x64", "64", or just a number
+  let px;
+  if (typeof size === 'number') {
+    px = size;
+  } else if (typeof size === 'string') {
+    const match = size.match(/^(\d+)/);
+    px = match ? parseInt(match[1], 10) : null;
+  }
+  if (!px || !RUIN_VALID_SIZES.includes(px)) {
+    return res.status(400).json({
+      error: `size must be one of: ${RUIN_VALID_SIZES.map(s => `${s}x${s}`).join(', ')}`,
+    });
+  }
+
+  try {
+    console.log(`[ruin-sprite] Generating ${px}x${px} sprite for: "${prompt.slice(0, 80)}"`);
+    const imageUrl = await callDalleForSprite(prompt.trim());
+    const rawBuffer = await downloadBuffer(imageUrl);
+
+    // Resize to requested dimensions using Lanczos (sharp default) for quality
+    // Use nearest-neighbor for pixel-perfect look at tiny sizes (≤32)
+    const resizeOpts = px <= 32
+      ? { width: px, height: px, kernel: sharp.kernel.nearest }
+      : { width: px, height: px, kernel: sharp.kernel.lanczos3 };
+
+    const spriteBuffer = await sharp(rawBuffer)
+      .resize(resizeOpts)
+      .png()
+      .toBuffer();
+
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=86400'); // cache 1 day
+    res.set('X-Ruin-Size', `${px}x${px}`);
+    res.set('X-Ruin-Prompt', prompt.slice(0, 120));
+    res.send(spriteBuffer);
+  } catch (e) {
+    console.error('[ruin-sprite] Error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── SPA ─────────────────────────────────────────────────────────────────────
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'dist', 'index.html')));
 
