@@ -1768,7 +1768,7 @@ const RUIN_API_TOKEN = 'ruin_sk_LZ5ub8tGSfDSQSuhuUVARIFkgCN0GNp42fFXjaTs';
 const RUIN_VALID_SIZES = [16, 32, 64, 128, 256, 512];
 
 function buildRuinSpritePrompt(userPrompt) {
-  return `${userPrompt.trim()}, 2D game sprite, pixel art style, centered on pure black background (#000000), crisp edges, readable at small scale, subject fills 70-80% of frame, no text, no UI, no borders, flat black background only`;
+  return userPrompt.trim();
 }
 
 async function callDalleForSprite(prompt) {
