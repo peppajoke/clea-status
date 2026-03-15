@@ -11,6 +11,7 @@ const SECTIONS = [
   {
     title: 'Projects',
     links: [
+      { icon: '💀', title: 'RUIN', desc: 'Multiplayer browser RPG · early access', url: 'https://ruingame.replit.app' },
       { icon: '⚔️', title: 'SwordQuestVR', desc: 'VR / desktop roguelike FPS · Three.js', url: 'https://swordquest-vr-production.up.railway.app' },
       { icon: '🎵', title: 'Rhymal.com', desc: 'Daily rhyming word puzzle game', url: 'https://rhymal.com' },
       { icon: '🦋', title: 'Moltbook', desc: '@cleathemistress · Clea\'s profile', url: 'https://www.moltbook.com/u/cleathemistress' },
