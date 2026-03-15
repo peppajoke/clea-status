@@ -1768,20 +1768,7 @@ const RUIN_API_TOKEN = 'ruin_sk_LZ5ub8tGSfDSQSuhuUVARIFkgCN0GNp42fFXjaTs';
 const RUIN_VALID_SIZES = [16, 32, 64, 128, 256, 512];
 
 function buildRuinSpritePrompt(userPrompt) {
-  return `Game sprite for a dark fantasy ruins game: "${userPrompt}".
-
-Art direction:
-- Style: hand-painted 2D game sprite, dark gothic fantasy aesthetic
-- Color palette: deep charcoal blacks, bone white, dried-blood crimson, rust orange, sickly moss green, tarnished silver — desaturated and grim
-- Lighting: harsh rim light from below or side, deep shadows, no bright cheerful colors
-- Subject is centered with clear silhouette on a flat solid BLACK background (#000000) — this black will be used as a transparency mask
-- No text, no UI elements, no borders, no decorative frames
-- Designed to look like a sprite sheet asset: crisp edges, readable at small scale
-- Inspired by: Dark Souls, Hollow Knight, Blasphemous — oppressive and decrepit atmosphere
-- The subject should fill roughly 70-80% of the image area
-- Flat black background only — critical for alpha masking
-
-Output must be a single centered subject on pure black. No gradients in background.`;
+  return `${userPrompt.trim()}, 2D game sprite, pixel art style, centered on pure black background (#000000), crisp edges, readable at small scale, subject fills 70-80% of frame, no text, no UI, no borders, flat black background only`;
 }
 
 async function callDalleForSprite(prompt) {
